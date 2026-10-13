@@ -1,5 +1,5 @@
 ---
-name: mem_stress
+name: mem-stress
 description: Linux 开发板内存 + CPU 压测脚本（stress-ng + memtester），带 CPU 温度实时监控、日志留存、Ctrl+C/PID 双停止方式。涵盖 memtester 轮数语义、stress-ng 超时默认值、thermal zone 温度采集、非交互场景停止等踩坑记录。
 ---
 

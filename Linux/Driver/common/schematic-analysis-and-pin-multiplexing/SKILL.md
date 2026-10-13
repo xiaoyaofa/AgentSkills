@@ -1,5 +1,5 @@
 ---
-name: schematic_analysis_and_pin_multiplexing
+name: schematic-analysis-and-pin-multiplexing
 description: 从客户底板原理图 PDF + 厂商核心板引脚表(xlsx) 出发，产出《硬件资源分析.md》与《引脚映射表.xlsx》的完整方法与工具链。覆盖：原理图 PDF 双层提取(pdftotext 文字层 + 300dpi 局部裁图)、xlsx 免依赖解析(空单元格省略/表头不在首行/尾部列串位等坑)、"底板到底用了哪些核心板信号"的双判据对撞、ball↔GPIO↔muxmode 反查、★"引脚表引出名≠Function0"查漏法、交付前的五项交叉复查、以及"表格用 xlsx、叙述用 markdown"的输出取舍。★ 需多模态视觉：拓扑判读（总线方向/门电路类型/DNP 归属/器件归属）只能读图，纯文本模型须走文中「模型能力要求」一节的降级路径。
 ---
 
