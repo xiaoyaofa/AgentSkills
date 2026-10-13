@@ -5,7 +5,7 @@ description: 从客户底板原理图 PDF + 厂商核心板引脚表(xlsx) 出�
 
 # 原理图分析与引脚复用（Schematic Analysis and Pin Multiplexing）
 
-- **脚本**: 见 [`bin/`](bin/) —— 6 个，全部免第三方 Python 包（除裁图用 Pillow、出 xlsx 用 LibreOffice）
+- **脚本**: 见 [`scripts/`](scripts/) —— 7 个，全部免第三方 Python 包（除裁图用 Pillow、出 xlsx 用 LibreOffice）
 - **依赖**: `poppler-utils`(pdftotext/pdftoppm/pdfinfo)、`python3`(仅标准库)、`Pillow`(裁图)、`LibreOffice`(可选，生成 xlsx)
 - **适用**: 任意 SoC/厂商 —— 只要手里有"① 底板原理图 PDF ② 厂商核心板引脚复用表(xlsx/表格)"
 - **首次验证平台**: MYIR MYC-YM62X（AM62x，ALW/BGA425）+ 客户底板 AZ-SG-AM62 R01（12 页原理图，164+58 脚）
@@ -24,13 +24,13 @@ description: 从客户底板原理图 PDF + 厂商核心板引脚表(xlsx) 出�
 
 | 脚本 | 一句话 |
 |---|---|
-| `bin/xlsx_dump.py` | 免依赖读 .xlsx（按单元格 `r=` 引用解析），导 TSV / `--check` 体检表结构 |
-| `bin/pdf_schematic_extract.sh` | 原理图 PDF 双层提取：文字层(原版+压缩空白版) + 每页 PNG + 页边界行号 |
-| `bin/img_crop.py` | 局部裁剪放大，供 Read 工具精读小字（网络名/位号/上下拉） |
-| `bin/pin_usage.py` | 判定"底板用了哪些核心板信号"，A/B 双判据 + 置信度列 |
-| `bin/pin_mux_table.py` | 反查 引脚原名(Function0) / 底板所需功能 / muxmode；`--audit` 查漏 |
-| `bin/table_to_xlsx.py` | 多个 TSV → 多 sheet xlsx（FODS + LibreOffice，免 openpyxl） |
-| `bin/verify_pinmap.py` | 交付前五项交叉复查 |
+| `scripts/xlsx_dump.py` | 免依赖读 .xlsx（按单元格 `r=` 引用解析），导 TSV / `--check` 体检表结构 |
+| `scripts/pdf_schematic_extract.sh` | 原理图 PDF 双层提取：文字层(原版+压缩空白版) + 每页 PNG + 页边界行号 |
+| `scripts/img_crop.py` | 局部裁剪放大，供 Read 工具精读小字（网络名/位号/上下拉） |
+| `scripts/pin_usage.py` | 判定"底板用了哪些核心板信号"，A/B 双判据 + 置信度列 |
+| `scripts/pin_mux_table.py` | 反查 引脚原名(Function0) / 底板所需功能 / muxmode；`--audit` 查漏 |
+| `scripts/table_to_xlsx.py` | 多个 TSV → 多 sheet xlsx（FODS + LibreOffice，免 openpyxl） |
+| `scripts/verify_pinmap.py` | 交付前五项交叉复查 |
 
 ## 模型能力要求（★ 用之前先看）
 
@@ -77,7 +77,7 @@ description: 从客户底板原理图 PDF + 厂商核心板引脚表(xlsx) 出�
 ## 标准流程
 
 ```bash
-BIN=<本skill>/bin
+BIN=<本skill>/scripts
 OUT=~/work/<客户>_<板名>; mkdir -p $OUT
 
 # ① 引脚表 -> TSV（先体检，确认表头在第几行）
@@ -149,7 +149,7 @@ python3 $BIN/verify_pinmap.py --pinlist $OUT/pinlist.tsv \
 厂商引脚表的「引脚名」是**引出命名**，不等于 SoC 的 Function0。多数只是写法差异（`SOC_OSPI0_DQ5` ↔ `OSPI0_D5`），但**有少数脚引出的确实不是 Function0**，按 Function0 配 pinctrl 就会配成别的功能。
 
 ```bash
-python3 bin/pin_mux_table.py --pinlist pinlist.tsv --audit   # 全部列出，逐条判
+python3 scripts/pin_mux_table.py --pinlist pinlist.tsv --audit   # 全部列出，逐条判
 ```
 
 实战抓出来的真错（都是"看起来像对的"）：

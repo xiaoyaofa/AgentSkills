@@ -5,7 +5,7 @@ description: Linux 开发板内存 + CPU 压测脚本（stress-ng + memtester）
 
 # 内存 / CPU 压测脚本（mem_stress）
 
-- **脚本**: [`bin/mem_stress.sh`](bin/mem_stress.sh)
+- **脚本**: [`scripts/mem_stress.sh`](scripts/mem_stress.sh)
 - **依赖**: `stress-ng`、`memtester`（busybox 的 `devmem` 无关；核心命令只用 coreutils）
 - **适用**: 任意 Linux 开发板；温度采集走标准 thermal 框架，ARM 平台通用
 - **首次验证平台**: MYD-LMX9X（i.MX93，2×A55，2GB LPDDR4X）
@@ -126,7 +126,7 @@ hwmon0/device -> /sys/devices/virtual/thermal/thermal_zone0    ← 镜像，跳�
 ## 部署到新板子
 
 ```bash
-scp bin/mem_stress.sh root@<板子>:/root/mem_stress.sh
+scp scripts/mem_stress.sh root@<板子>:/root/mem_stress.sh
 ssh root@<板子> 'chmod +x /root/mem_stress.sh'
 ```
 

@@ -103,7 +103,7 @@ cd eglfs-mirror && ./build.sh
 ## 部署(4 步)
 
 ```sh
-# 1. 上传插件与元数据(skill 附带 bin/ 下已有编译好的产物)
+# 1. 上传插件与元数据(skill 附带 assets/ 下已有编译好的产物)
 scp libqeglfs-myclone-integration.so mycloneintegration.json \
     root@<板IP>:/usr/lib/plugins/egldeviceintegrations/
 
@@ -163,6 +163,6 @@ ssh root@<板IP> \
 
 ## 附带产物
 
-`bin/` 目录含编译好的 `libqeglfs-myclone-integration.so`(aarch64)与
+`assets/` 目录含编译好的 `libqeglfs-myclone-integration.so`(aarch64)与
 `mycloneintegration.json` —— 同版本环境(TI SDK 11.01.05.03 / Qt 6.9.2)
 可直接部署免编译;换环境需用上文构建步骤重编。
