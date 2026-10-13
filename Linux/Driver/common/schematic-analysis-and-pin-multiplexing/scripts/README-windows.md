@@ -66,6 +66,14 @@ python %BIN%\table_to_xlsx_openpyxl.py %OUT%\引脚映射表.xlsx ^
 
 > `--sheet "表名:路径[:列宽]"` 里**路径带盘符是支持的**（`D:\work\used.tsv` 或 `D:/work/used.tsv` 都行）：解析规则是"第一个 `:` 前是表名，末尾那段只有形如 `2,3.5` 才当列宽"。
 
+```bash
+:: ⑥ 交付前必跑（二）：交付物内部一致性（md 的位号↔型号 vs xlsx 器件清单）
+python %BIN%\verify_pinmap.py --pinlist %OUT%\pinlist.tsv ^
+       --sch %OUT%\sch\text\*.compact.txt --used %OUT%\sheet1.tsv --unused %OUT%\sheet2.tsv
+python %BIN%\check_deliverable_consistency.py ^
+       --xlsx %OUT%\引脚映射表.xlsx --md %OUT%\硬件资源分析.md
+```
+
 ## 四、注意事项
 
 1. **编码**：脚本一律按 UTF-8 读写 TSV。Windows 上生成 TSV 时别用记事本另存成 GBK；用 `python ... > x.tsv` 重定向或 VS Code 指定 UTF-8 即可。脚本已兼容 CRLF 行尾。
