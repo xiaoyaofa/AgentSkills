@@ -6,7 +6,7 @@ metadata:
   category: Linux/Driver
   platform: common
   soc: AM62x
-  board: MYC-YM62X + AZ-SG-AM62 R01（首次验证）
+  board: MYC-YM62X（首次验证）
   vendor: MYIR
 ---
 
@@ -15,7 +15,7 @@ metadata:
 - **脚本**: 见 [`scripts/`](scripts/) —— 7 个，全部免第三方 Python 包（除裁图用 Pillow、出 xlsx 用 LibreOffice）
 - **依赖**: `poppler-utils`(pdftotext/pdftoppm/pdfinfo)、`python3`(仅标准库)、`Pillow`(裁图)、`LibreOffice`(可选，生成 xlsx)
 - **适用**: 任意 SoC/厂商 —— 只要手里有"① 底板原理图 PDF ② 厂商核心板引脚复用表(xlsx/表格)"
-- **首次验证平台**: MYIR MYC-YM62X（AM62x，ALW/BGA425）+ 客户底板 AZ-SG-AM62 R01（12 页原理图，164+58 脚）
+- **首次验证平台**: MYIR MYC-YM62X（AM62x，ALW/BGA425）
 
 ## 用途
 
