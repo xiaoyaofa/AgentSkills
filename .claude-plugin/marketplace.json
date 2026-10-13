@@ -1,0 +1,40 @@
+{
+  "name": "xiaoyaofa-agentskills",
+  "description": "嵌入式 Linux 实战技能集（Linux/Driver、Linux/System）。每个技能都是一个独立插件，可单独安装。",
+  "owner": {
+    "name": "xiaoyaofa",
+    "url": "https://github.com/xiaoyaofa"
+  },
+  "plugins": [
+    {
+      "name": "schematic-analysis-and-pin-multiplexing",
+      "source": "./Linux/Driver/common/schematic-analysis-and-pin-multiplexing",
+      "category": "Linux/Driver",
+      "tags": ["schematic", "pin-multiplexing", "pinctrl", "device-tree", "xlsx", "pdf", "am62x"]
+    },
+    {
+      "name": "c7z020-driver-dev",
+      "source": "./Linux/Driver/kehu/c7z010_20/tebiandiangong/c7z020-driver-dev",
+      "category": "Linux/Driver",
+      "tags": ["petalinux", "zynq", "c7z020", "kernel-driver", "device-tree", "uartlite", "xadc"]
+    },
+    {
+      "name": "qt-eglfs-mirror",
+      "source": "./Linux/System/am625X/sdk11/qt-eglfs-mirror",
+      "category": "Linux/System",
+      "tags": ["qt", "eglfs", "kms", "dual-display", "mirror", "am62x", "tidss", "hdmi", "lvds"]
+    },
+    {
+      "name": "mem-stress",
+      "source": "./Linux/System/common/mem-stress",
+      "category": "Linux/System",
+      "tags": ["stress-test", "memtester", "stress-ng", "thermal", "benchmark"]
+    },
+    {
+      "name": "stm32mp257-overlayfs",
+      "source": "./Linux/System/stm32mp257-overlayfs",
+      "category": "Linux/System",
+      "tags": ["yocto", "overlayfs", "stm32mp257", "readonly-rootfs", "flashlayout", "wic"]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "stm32mp257-overlayfs",
+  "displayName": "STM32MP257 只读 rootfs + overlay",
+  "version": "1.0.0",
+  "description": "STM32MP257（MYD-LD25X）Yocto overlayfs 只读 rootfs + overlay 分区方案，涵盖分区定义、initramfs-overlayroot、内核参数、WIC/flashlayout 生成与故障排查。",
+  "author": {
+    "name": "xiaoyaofa",
+    "url": "https://github.com/xiaoyaofa"
+  },
+  "repository": "https://github.com/xiaoyaofa/AgentSkills",
+  "license": "MIT",
+  "keywords": ["yocto", "overlayfs", "stm32mp257", "readonly-rootfs", "flashlayout", "wic"]
+}

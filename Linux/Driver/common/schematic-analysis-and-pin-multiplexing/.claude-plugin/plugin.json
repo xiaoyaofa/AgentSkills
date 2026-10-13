@@ -1,0 +1,13 @@
+{
+  "name": "schematic-analysis-and-pin-multiplexing",
+  "displayName": "原理图分析与引脚复用",
+  "version": "1.0.0",
+  "description": "从客户底板原理图 PDF + 厂商核心板引脚表（xlsx）产出《硬件资源分析.md》与《引脚映射表.xlsx》的完整方法与工具链，含 7 个免第三方依赖的提取／反查／校验脚本。",
+  "author": {
+    "name": "xiaoyaofa",
+    "url": "https://github.com/xiaoyaofa"
+  },
+  "repository": "https://github.com/xiaoyaofa/AgentSkills",
+  "license": "MIT",
+  "keywords": ["schematic", "pin-multiplexing", "pinctrl", "device-tree", "xlsx", "pdf", "am62x"]
+}

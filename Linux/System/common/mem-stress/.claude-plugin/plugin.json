@@ -1,0 +1,13 @@
+{
+  "name": "mem-stress",
+  "displayName": "内存／CPU 压测（mem_stress）",
+  "version": "1.0.0",
+  "description": "Linux 开发板内存 + CPU 压测脚本（stress-ng + memtester），带 CPU 温度实时监控、日志留存、Ctrl+C/PID 双停止方式。",
+  "author": {
+    "name": "xiaoyaofa",
+    "url": "https://github.com/xiaoyaofa"
+  },
+  "repository": "https://github.com/xiaoyaofa/AgentSkills",
+  "license": "MIT",
+  "keywords": ["stress-test", "memtester", "stress-ng", "thermal", "benchmark"]
+}

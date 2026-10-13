@@ -1,0 +1,13 @@
+{
+  "name": "qt-eglfs-mirror",
+  "displayName": "Qt eglfs 双屏同显（AM62x）",
+  "version": "1.0.0",
+  "description": "AM62x（TI SDK 11）Qt eglfs 双屏同显插件方案：LVDS 主屏 + HDMI 硬件缩放直通，含插件架构、构建部署、tidss plane 绑定与全部踩坑记录，随附已编译产物（aarch64 .so + json）。",
+  "author": {
+    "name": "xiaoyaofa",
+    "url": "https://github.com/xiaoyaofa"
+  },
+  "repository": "https://github.com/xiaoyaofa/AgentSkills",
+  "license": "MIT",
+  "keywords": ["qt", "eglfs", "kms", "dual-display", "mirror", "am62x", "tidss", "hdmi", "lvds"]
+}
