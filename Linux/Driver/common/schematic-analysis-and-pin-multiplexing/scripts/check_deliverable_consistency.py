@@ -44,7 +44,7 @@ import subprocess
 import sys
 
 # 位号形状：U3 / Q10 / L7 / FB1 / Y2 / CON7 / JP1 / SW4 / D14 / LCM1 …
-REF = r'[UQD]\d{1,2}|L\d{1,3}|FB\d|Y\d|LCM\d|CON\d|JP\d|SW\d|PWR\d'
+REF = r'[UQD]\d{1,2}|J\d{1,2}|L\d{1,4}|FB\d|Y\d|LCM\d|CON\d|JP\d|SW\d|PWR\d|SA\d{1,2}|F\d{1,2}|RZ\d'
 # 位号与型号之间的"绑定"分隔符：只允许空白与 = / :，显式排除 → -> | 等
 BIND = r'\s*(?:[=＝:：]\s*)?'
 # 型号后面"跟着的必须不是字母数字" —— 用这个而不是 \b：\b 要求两侧一个是词字符，
@@ -75,6 +75,23 @@ def expand_refs(cell):
                 continue
         out.add(part)
     return out
+
+
+def range_covered(ref, text):
+    """text 里是否用**区间写法**覆盖了该位号，如 "D1–D4" 覆盖 D2、"L6813–L6820" 覆盖 L6815。
+
+    原理图/文档里成组的器件常写成区间（D1–D4、Q1–Q4、SW1–SW4、SA1–SA16…），
+    逐个数位号去找必然找不到，会把整组都误报成"清单有、文本没提到"。
+    """
+    m = re.fullmatch(r'([A-Za-z]+)(\d+)', ref)
+    if not m:
+        return False
+    pre, n = m.group(1), int(m.group(2))
+    pat = rf'\b{re.escape(pre)}(\d{{1,4}})\s*[-–~]\s*(?:{re.escape(pre)})?(\d{{1,4}})\b'
+    for mm in re.finditer(pat, text):
+        if int(mm.group(1)) <= n <= int(mm.group(2)):
+            return True
+    return False
 
 
 def load_xlsx_devices(path, sheet):
@@ -182,7 +199,9 @@ def main():
     say('')
 
     # ---- [3] 清单里有但 md 没提 ----
-    only_list = sorted(set(ref2model) - in_md, key=lambda x: (re.sub(r'\d', '', x), len(x), x))
+    # 逐个数位号找不到的，再看它是否被某个区间写法覆盖（D1–D4 覆盖 D2）
+    only_list = sorted({r for r in ref2model if r not in in_md and not range_covered(r, txt)},
+                       key=lambda x: (re.sub(r'\d', '', x), len(x), x))
     say(f'[3] 器件清单里有、md 完全没提到的位号（{len(only_list)}）: {only_list or "无"}')
     say('')
 
