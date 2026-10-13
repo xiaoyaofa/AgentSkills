@@ -1,6 +1,6 @@
 ---
 name: schematic-analysis-and-pin-multiplexing
-description: 从客户底板原理图 PDF + 厂商核心板引脚表（xlsx）出发，产出《硬件资源分析.md》与《引脚映射表.xlsx》的完整方法与工具链。覆盖：原理图 PDF 双层提取（pdftotext 文字层 + 300dpi 局部裁图）、xlsx 免依赖解析（空单元格省略／表头不在首行／尾部列串位等坑）、「底板到底用了哪些核心板信号」的双判据对撞、ball↔GPIO↔muxmode 反查、★「引脚表引出名≠Function0」查漏法、交付前的五项交叉复查、以及「表格用 xlsx、叙述用 markdown」的输出取舍。★ 需多模态视觉：拓扑判读（总线方向／门电路类型／DNP 归属／器件归属）只能读图，纯文本模型须走文中「模型能力要求」一节的降级路径。
+description: 从客户底板原理图 PDF + 厂商核心板引脚表（xlsx）出发，产出《硬件资源分析.md》与《引脚映射表.xlsx》的完整方法与工具链。覆盖：原理图 PDF 双层提取（pdftotext 文字层 + 300dpi 局部裁图，Windows 另有 pypdfium2 纯 pip 路线）、xlsx 免依赖解析（空单元格省略／表头不在首行／尾部列串位等坑）、「底板到底用了哪些核心板信号」的双判据对撞、ball↔GPIO↔muxmode 反查、★「引脚表引出名≠Function0」查漏法、交付前两份复查（引脚表↔原理图 [A]~[F] ＋ 交付物内部一致性 md↔xlsx）、以及「表格用 xlsx、叙述用 markdown」的输出取舍。★ 需多模态视觉：拓扑判读（总线方向／门电路类型／DNP 归属／器件归属）只能读图，纯文本模型须走文中「模型能力要求」一节的降级路径。
 license: MIT
 metadata:
   category: Linux/Driver
@@ -12,8 +12,10 @@ metadata:
 
 # 原理图分析与引脚复用（Schematic Analysis and Pin Multiplexing）
 
-- **脚本**: 见 [`scripts/`](scripts/) —— 7 个，全部免第三方 Python 包（除裁图用 Pillow、出 xlsx 用 LibreOffice）
-- **依赖**: `poppler-utils`(pdftotext/pdftoppm/pdfinfo)、`python3`(仅标准库)、`Pillow`(裁图)、`LibreOffice`(可选，生成 xlsx)
+- **脚本**: 见 [`scripts/`](scripts/) —— 10 个，核心逻辑只用 Python 标准库；只有裁图、PDF 渲染、xlsx 导出用到第三方包（见下）
+- **依赖**: 两条路线按平台二选一（详见「平台 → 用哪个入口」）
+  - Linux/macOS：`poppler-utils`(pdftotext/pdftoppm/pdfinfo)、`Pillow`(裁图)、`LibreOffice`(出 xlsx)
+  - Windows/无系统包：`pip install pypdfium2 pillow openpyxl`
 - **适用**: 任意 SoC/厂商 —— 只要手里有"① 底板原理图 PDF ② 厂商核心板引脚复用表(xlsx/表格)"
 - **首次验证平台**: MYIR MYC-YM62X（AM62x，ALW/BGA425）
 
