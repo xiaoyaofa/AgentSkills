@@ -25,6 +25,34 @@
 把 `mem-stress` 换成上表里任意一个技能名即可单独安装。安装后可用 `/mem-stress` 调用
 （完整形式 `/mem-stress:mem-stress`）。
 
+如果当前环境没有 `/plugin` 斜杠命令（VSCode 扩展、脚本、CI 等场合），用等价的 CLI：
+
+```bash
+claude plugin marketplace add xiaoyaofa/AgentSkills
+claude plugin install mem-stress@xiaoyaofa-agentskills
+claude plugin list                    # 确认已装
+claude plugin uninstall mem-stress@xiaoyaofa-agentskills   # 卸载
+```
+
+> 添加市场时 Claude Code 默认走 **SSH** 克隆（日志里的 `Cloning via SSH: git@github.com:...`），
+> 所以本机需要有一个注册到 GitHub 的 SSH key。SSH 不可用时可以改用 git URL 形式：
+> `claude plugin marketplace add https://github.com/xiaoyaofa/AgentSkills.git`
+>
+> 若克隆因网络慢而超时，用 `CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS` 放宽限制（毫秒，默认 120000）。
+
+**只想本机自用？** 软链更省事 —— 改仓库里的 `SKILL.md` 会话内立即生效，不用 bump `version`：
+
+```bash
+mkdir -p ~/.claude/skills
+cd /path/to/AgentSkills
+find Linux -name SKILL.md -printf '%h\n' | while read -r d; do
+  ln -sfn "$PWD/$d" ~/.claude/skills/"$(basename "$d")"
+done
+```
+
+这些目录带 `.claude-plugin/plugin.json`，挂上去后会以 `<name>@skills-dir` 的形态作为插件加载。
+新建 `~/.claude/skills/` 后需要跑一次 `/reload-skills` 才会被监视，之后增删自动生效。
+
 **其他支持 Agent Skills 的工具**（Cursor、Codex、GitHub Copilot、Gemini CLI 等）：
 
 ```bash
