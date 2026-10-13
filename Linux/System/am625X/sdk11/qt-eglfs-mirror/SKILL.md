@@ -1,6 +1,14 @@
 ---
 name: qt-eglfs-mirror
-description: AM62x(TI SDK 11)Qt eglfs 双屏同显插件方案。LVDS 主屏 + HDMI 硬件缩放直通的完整实现:插件架构(Qt eglfs_kms 私有类扩展)、构建部署、tidss plane 绑定与硬件 scaler 决策、全部踩坑记录与故障排查。
+description: AM62x（TI SDK 11）的 Qt eglfs 双屏同显插件方案：LVDS 主屏 + HDMI 硬件缩放直通的完整实现，含插件架构（Qt eglfs_kms 私有类扩展）、构建部署、tidss plane 绑定与硬件 scaler 决策、全部踩坑记录与故障排查。
+license: MIT
+metadata:
+  category: Linux/System
+  platform: am625X
+  soc: AM625x
+  board: MYD-YM62X（LVDS 1024x600 + HDMI 1920x1080）
+  sdk: TI Processor SDK 11.01.05.03
+  vendor: MYIR
 ---
 
 # AM62x Qt eglfs 双屏同显(eglfs-mirror 插件)

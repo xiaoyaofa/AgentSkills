@@ -1,6 +1,14 @@
 ---
 name: stm32mp257-overlayfs
-description: STM32MP257 (MYD-LD25X) Yocto overlayfs 只读 rootfs + overlay 分区方案。涵盖分区定义、initramfs-overlayroot、内核参数、WIC/flashlayout 生成、验证和故障排查。
+description: STM32MP257（MYD-LD25X）Yocto overlayfs 只读 rootfs + overlay 分区方案；涵盖分区定义、initramfs-overlayroot、内核参数、WIC/flashlayout 生成、验证和故障排查。
+license: MIT
+metadata:
+  category: Linux/System
+  platform: stm32mp257
+  soc: STM32MP257
+  board: MYD-LD25X
+  yocto: Scarthgap 5.0.3
+  vendor: MYIR
 ---
 
 # STM32MP257 Overlayfs 只读 Rootfs 方案
