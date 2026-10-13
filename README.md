@@ -5,13 +5,13 @@
 
 ## 技能清单
 
-| 技能 | 分类 | 平台 | 说明 |
-|---|---|---|---|
-| [`schematic-analysis-and-pin-multiplexing`](Linux/Driver/common/schematic-analysis-and-pin-multiplexing/) | Linux/Driver | common | 原理图 PDF + 引脚表 → 硬件资源分析／引脚映射表 |
-| [`c7z020-driver-dev`](Linux/Driver/kehu/c7z010_20/tebiandiangong/c7z020-driver-dev/) | Linux/Driver | c7z010_20 | MYD-C7Z020 PetaLinux 内核驱动开发（客户：特变电工） |
-| [`qt-eglfs-mirror`](Linux/System/am625X/sdk11/qt-eglfs-mirror/) | Linux/System | am625X/sdk11 | AM62x Qt eglfs 双屏同显 |
-| [`mem-stress`](Linux/System/common/mem-stress/) | Linux/System | common | 内存／CPU 压测 + 温度监控 |
-| [`stm32mp257-overlayfs`](Linux/System/stm32mp257-overlayfs/) | Linux/System | stm32mp257 | Yocto 只读 rootfs + overlay |
+| 技能                                                                                                       | 分类         | 平台         | 说明                                                |
+| ---------------------------------------------------------------------------------------------------------- | ------------ | ------------ | --------------------------------------------------- |
+| [`schematic-analysis-and-pin-multiplexing`](Linux/Driver/common/schematic-analysis-and-pin-multiplexing/) | Linux/Driver | common       | 原理图 PDF + 引脚表 → 硬件资源分析／引脚映射表     |
+| [`c7z020-driver-dev`](Linux/Driver/kehu/c7z010_20/tebiandiangong/c7z020-driver-dev/)                      | Linux/Driver | c7z010_20    | MYD-C7Z020 PetaLinux 内核驱动开发（客户：特变电工） |
+| [`qt-eglfs-mirror`](Linux/System/am625X/sdk11/qt-eglfs-mirror/)                                           | Linux/System | am625X/sdk11 | AM62x Qt eglfs 双屏同显                             |
+| [`mem-stress`](Linux/System/common/mem-stress/)                                                           | Linux/System | common       | 内存／CPU 压测 + 温度监控                           |
+| [`stm32mp257-overlayfs`](Linux/System/stm32mp257-overlayfs/)                                              | Linux/System | stm32mp257   | Yocto 只读 rootfs + overlay                         |
 
 ## 安装
 
@@ -62,17 +62,30 @@ npx skills add xiaoyaofa/AgentSkills --full-depth
 > `--full-depth` 是必需的。技能分散在 `Linux/` 下的分类目录里，不在该 CLI 默认扫描的
 > `skills/` 容器路径中，不加这个参数会发现不到。
 
+> ⚠️ **需要 Node.js ≥ 22.20.0**（`skills` CLI 的要求）。Ubuntu 22.04 的 `universe`
+> 源里只有 Node 12，`apt install nodejs` 解决不了，而 `/usr/bin/node` 被若干 Debian
+> 的 `node-*` 包依赖，直接替换有风险。推荐用 nvm 装到用户目录：
+>
+> ```bash
+> curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | bash
+> export NVM_DIR="$HOME/.nvm"; [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+> nvm install 24 && nvm alias default 24
+> ```
+>
+> 不想动 Node 环境的话，可以跳过这一步，直接把技能目录软链到目标宿主的 skills 目录
+> （见上面的软链方式），效果等价且不需要 Node。
+
 ## 目录结构
 
 ```
 Linux/<分类>/<平台>/<技能>/          ← 技能目录 = 插件根
 ```
 
-| 路径 | 含义 |
-|---|---|
-| `Linux/Driver/` | 驱动相关技能 |
-| `Linux/System/` | 系统／显示／存储相关技能 |
-| `Linux/Driver/c7z010_20/` | 平台分类位（空占位） |
+| 路径                             | 含义                          |
+| -------------------------------- | ----------------------------- |
+| `Linux/Driver/`                | 驱动相关技能                  |
+| `Linux/System/`                | 系统／显示／存储相关技能      |
+| `Linux/Driver/c7z010_20/`      | 平台分类位（空占位）          |
 | `Linux/Driver/kehu/c7z010_20/` | 客户分类位（`kehu` = 客户） |
 
 > ⚠️ 上面两个 `c7z010_20` 同名不同义。二者都只是分类目录，**不是插件根**，
