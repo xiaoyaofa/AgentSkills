@@ -1,11 +1,11 @@
 ---
 name: c7z020-driver-dev
-description: MYD-C7Z020 PetaLinux 内核驱动开发、设备树修改、补丁生成和编译打包的完整工作流。涉及 uartlite RS485、PWM、XADC 等驱动。客户项目「特变电工」（tebiandiangong）。
+description: MYD-C7Z020 PetaLinux 内核驱动开发、设备树修改、补丁生成和编译打包的完整工作流。涉及 uartlite RS485、PWM、XADC 等驱动。客户项目 tebiandiangong。
 license: MIT
 metadata:
   category: Linux/Driver
   platform: c7z010_20
-  customer: 特变电工（tebiandiangong）
+  customer: tebiandiangong
   soc: Zynq-7020
   board: MYD-C7Z020
   petalinux: "2024.2"

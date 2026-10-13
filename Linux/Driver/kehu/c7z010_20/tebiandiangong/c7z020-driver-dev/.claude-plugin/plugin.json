@@ -1,7 +1,7 @@
 {
   "name": "c7z020-driver-dev",
-  "displayName": "C7Z020 内核驱动开发（特变电工）",
-  "version": "1.0.0",
+  "displayName": "C7Z020 内核驱动开发",
+  "version": "1.0.1",
   "description": "MYD-C7Z020 PetaLinux 内核驱动开发、设备树修改、补丁生成和编译打包的完整工作流，涉及 uartlite RS485、PWM、XADC 等驱动。",
   "author": {
     "name": "xiaoyaofa",
