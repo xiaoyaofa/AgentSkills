@@ -136,6 +136,10 @@ def main():
     ap.add_argument('out')
     ap.add_argument('--sheet', action='append', required=True,
                     metavar='NAME:FILE[:W1,W2,...]')
+    ap.add_argument('--keep-fods', action='store_true',
+                    help='转换成功后仍保留中间的 .fods。默认转换成功即删除 —— 否则会在输出目录'
+                         '留下 200KB 级别的中间件（客户交付目录里尤其碍事）。'
+                         '没装 LibreOffice 时无论如何都会保留，供手工另存。')
     a = ap.parse_args()
 
     sheets = []
@@ -167,6 +171,9 @@ def main():
     if os.path.abspath(made) != os.path.abspath(a.out):
         shutil.move(made, a.out)
     print(f'XLSX: {a.out}')
+    if not a.keep_fods:            # 转换成功就别把中间件留在输出目录（交付目录尤其要干净）
+        os.remove(fods)
+        print('（中间 .fods 已删除；需要保留请加 --keep-fods）')
 
 
 if __name__ == '__main__':
