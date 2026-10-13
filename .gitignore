@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# 注意：不要写成 .claude* —— 那会把 .claude-plugin/ 一起忽略掉
+.claude/
