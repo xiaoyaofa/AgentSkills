@@ -29,8 +29,8 @@ import sys
 from collections import OrderedDict
 
 
-def split_pages(lines, npages, page_re=r'Sheet\s+(\d+)\s+of\s+(\d+)'):
-    """按页脚 'Sheet N of M' 切页；返回 {页号: [行...]}"""
+def split_pages(lines, npages, page_re=r'Sheet:?\s*(\d+)\s+of\s+(\d+)'):
+    """按页脚 'Sheet N of M' 切页（默认兼容带冒号的 'Sheet: N of M'）；返回 {页号: [行...]}"""
     ends = OrderedDict()
     rx = re.compile(page_re, re.I)
     for i, l in enumerate(lines):
@@ -55,6 +55,8 @@ def main():
     ap.add_argument('--ball-col', type=int, default=2)
     ap.add_argument('--conn-page', type=int, default=3)
     ap.add_argument('--pages', type=int, default=12)
+    ap.add_argument('--page-re', default=r'Sheet:?\s*(\d+)\s+of\s+(\d+)',
+                    help='页脚正则（默认兼容带/不带冒号；别的格式自己给）')
     ap.add_argument('--sku', default='SOC_,SoC_',
                     help='信号名在原理图里的前缀（逗号分隔，剥离后再匹配）')
     ap.add_argument('--skip', default='GND',
@@ -66,9 +68,16 @@ def main():
     a = ap.parse_args()
 
     lines = open(a.sch, encoding='utf-8', errors='replace').read().splitlines()
-    pages = split_pages(lines, a.pages)
-    if not pages:
-        sys.exit('没能按页脚切页：确认 compact 文本里保留着 "Sheet N of M"（不要在提取时过滤掉）')
+    pages = split_pages(lines, a.pages, a.page_re)
+    # ★ 切页数 <=1 必须报错：静默回退成"1 页"会让所有信号都被判成"用到"（连接器页不存在时
+    #   判据 A 恒真），这是本工具最危险的一种假结果，宁可停下也不能猜。
+    if len(pages) <= 1:
+        sys.exit(f'切页失败：仅 {len(pages)} 页 —— 页脚格式可能不是 "Sheet N of M"。'
+                 f'请用 --page-re 指定页脚正则（当前: {a.page_re}）；'
+                 f'或确认 PDF 文字层里有页脚（扫描件需先 OCR）。')
+    if a.conn_page not in pages:
+        sys.exit(f'连接器页 {a.conn_page} 不在切出的页号 {sorted(pages)} 中：'
+                 f'请用 --conn-page 指定正确的连接器页。')
     others = '\n'.join(l for p, ls in pages.items() if p != a.conn_page for l in ls)
     conn = pages.get(a.conn_page, [])
     skip = {s.strip().upper() for s in a.skip.split(',') if s.strip()}
@@ -78,7 +87,7 @@ def main():
     rows = []
     hdr_rx = re.compile(r'#?Function\s*\d', re.I)
     for li, line in enumerate(open(a.pinlist, encoding='utf-8')):
-        f = line.rstrip('\n').split('\t')
+        f = line.rstrip('\r\n').split('\t')   # 兼容 Windows CRLF
         if len(f) <= max(a.name_col, a.ball_col):
             continue
         # 跳表头：开头 N 行，或任何单元格含 "FunctionN"（厂商引脚表的通用特征）

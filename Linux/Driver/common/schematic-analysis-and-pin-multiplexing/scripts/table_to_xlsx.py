@@ -13,6 +13,7 @@
         --sheet "2-未用信号:unused.tsv:2.2,4,1.6,2.8,2,1.2,7"
 
     --sheet 语法:  "表名:TSV文件[:列宽cm,用逗号分隔]"
+                  路径可含 Windows 盘符（D:/work/x.tsv），解析见 parse_sheet_spec()
 
 没有 LibreOffice 时的替代路径：
     · 只要能出 .fods 再手工用 LibreOffice/WPS 打开另存；
@@ -26,6 +27,7 @@
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -37,6 +39,35 @@ def esc(s):
     for a, b in ESC:
         s = s.replace(a, b)
     return s
+
+
+WIDTHS_RX = re.compile(r'^[\d.]+(?:,[\d.]+)*$')
+
+
+def parse_sheet_spec(spec):
+    """解析 --sheet 的 "表名:路径[:列宽]"。
+
+    ★ 不能用朴素的 spec.split(':')：Windows 路径带盘符（D:/work/x.tsv）会被切碎，
+      取到 'D' 当路径 → 报"找不到 D"。规则：
+        第一个 ':' 之前是表名；
+        末尾那段**只有**形如 "2,3.2" 才当列宽（且要求候选路径存在，或该段含 ',' / '.'）；
+        剩下整段都是路径（含盘符）。
+
+    返回 (name, path, widths)。
+    """
+    if ':' not in spec:
+        sys.exit(f'--sheet 语法错误（应为 "表名:TSV文件[:列宽]"）: {spec}')
+    name, rest = spec.split(':', 1)
+    widths = []
+    if ':' in rest:
+        cand_path, cand_w = rest.rsplit(':', 1)
+        looks_like_path = ('/' in cand_path or '\\' in cand_path or '.' in cand_path)
+        if WIDTHS_RX.match(cand_w) and (os.path.isfile(cand_path) or ',' in cand_w
+                                        or '.' in cand_w or looks_like_path):
+            rest, widths = cand_path, [float(x) for x in cand_w.split(',')]
+    if not name:
+        sys.exit(f'--sheet 表名为空: {spec}')
+    return name, rest, widths
 
 
 def read_tsv(path):
@@ -109,13 +140,9 @@ def main():
 
     sheets = []
     for spec in a.sheet:
-        parts = spec.split(':')
-        if len(parts) < 2:
-            sys.exit(f'--sheet 语法错误: {spec}')
-        name, path = parts[0], parts[1]
-        widths = [float(x) for x in parts[2].split(',')] if len(parts) > 2 and parts[2] else []
-        if not os.path.exists(path):
-            sys.exit(f'找不到 {path}')
+        name, path, widths = parse_sheet_spec(spec)
+        if not os.path.isfile(path):
+            sys.exit(f'找不到文件 {path}（--sheet 给的是 "{spec}"）')
         sheets.append((name, read_tsv(path), widths))
 
     fods = os.path.splitext(a.out)[0] + '.fods'

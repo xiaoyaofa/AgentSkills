@@ -32,12 +32,39 @@ metadata:
 | 脚本 | 一句话 |
 |---|---|
 | `scripts/xlsx_dump.py` | 免依赖读 .xlsx（按单元格 `r=` 引用解析），导 TSV / `--check` 体检表结构 |
-| `scripts/pdf_schematic_extract.sh` | 原理图 PDF 双层提取：文字层(原版+压缩空白版) + 每页 PNG + 页边界行号 |
+| `scripts/pdf_schematic_extract.sh` | 原理图双层提取（**Linux/macOS 入口**，走 poppler）：文字层 + 每页 PNG + 页边界行号 |
+| `scripts/pdf_extract.py` | 同上，**Windows / 无 poppler 入口**（走 pypdfium2，纯 pip） |
 | `scripts/img_crop.py` | 局部裁剪放大，供 Read 工具精读小字（网络名/位号/上下拉） |
 | `scripts/pin_usage.py` | 判定"底板用了哪些核心板信号"，A/B 双判据 + 置信度列 |
 | `scripts/pin_mux_table.py` | 反查 引脚原名(Function0) / 底板所需功能 / muxmode；`--audit` 查漏 |
-| `scripts/table_to_xlsx.py` | 多个 TSV → 多 sheet xlsx（FODS + LibreOffice，免 openpyxl） |
+| `scripts/table_to_xlsx.py` | 多个 TSV → 多 sheet xlsx（FODS + LibreOffice 路线） |
+| `scripts/table_to_xlsx_openpyxl.py` | 同上，**纯 pip 路线**（openpyxl 直写，免 LibreOffice） |
 | `scripts/verify_pinmap.py` | 交付前五项交叉复查 |
+
+### 平台 → 用哪个入口（★ 两条路不等价，按平台挑一个，别混用）
+
+| 环节 | Linux / macOS（有系统包） | Windows / 无系统包 |
+|---|---|---|
+| PDF 双层提取 | `pdf_schematic_extract.sh`（poppler，`-layout` **严格版面序**） | `pdf_extract.py`（pypdfium2，「阅读序」） |
+| xlsx 导出 | `table_to_xlsx.py`（需 LibreOffice） | `table_to_xlsx_openpyxl.py`（`pip install openpyxl`） |
+| 其余脚本 | 跨平台通用，同一份 | 同左 |
+
+依赖差异：
+
+```bash
+# Linux/macOS：装系统包即可，零 pip 依赖
+sudo apt install poppler-utils      # 或 brew install poppler
+# Windows（或任意平台想免系统包）：
+pip install pypdfium2 pillow openpyxl
+```
+
+**为什么不当成同一个东西**：`pdftotext -layout` 是严格版面序，PDFium 是「阅读序」，两者的文字层**行结构不同**（同一份原理图压缩后 1907 行 vs 3099 行）。实测结论是：**主判据不受影响、弱判据变差**——
+- 用/未用判定（判据 A/B）：**194 只脚逐脚一致**，`verify_pinmap` 的 `[A]~[D]` 都是 0；
+- 弱判据 `[E]`（负载列器件号邻近性）：43 条 → **64 条**，因为阅读序把网络名与器件位号排得更远，误报更多（`[E]` 本就需人工/看图裁决）。
+
+另外 PDFium 取不到 PDF 标题栏里的页码值（poppler 能），所以 `pdf_extract.py` 改成每页**合成一行 `Sheet n of N`** 当锚点。细节见 [`scripts/README-windows.md`](scripts/README-windows.md)。
+
+> **走 pypdfium2 路线时，务必在交付文档里注明**，并重点用图复核 —— 别让下游以为是严格版面序的结果。
 
 ## 模型能力要求（★ 用之前先看）
 
@@ -85,19 +112,22 @@ metadata:
 
 ```bash
 BIN=<本skill>/scripts
-OUT=~/work/<客户>_<板名>; mkdir -p $OUT
+OUT="$HOME/work/项目名"; mkdir -p "$OUT"
 
 # ① 引脚表 -> TSV（先体检，确认表头在第几行）
 python3 $BIN/xlsx_dump.py 核心板引脚表.xlsx --check
 python3 $BIN/xlsx_dump.py 核心板引脚表.xlsx --sheet 1 --skip-rows 1 > $OUT/pinlist.tsv
 
-# ② 原理图 -> 文字层 + 整图
-$BIN/pdf_schematic_extract.sh 原理图.pdf $OUT/sch 160
+# ② 原理图 -> 文字层 + 整图（★ 按平台二选一，别混用）
+$BIN/pdf_schematic_extract.sh 原理图.pdf $OUT/sch 160      # Linux/macOS：poppler，-layout 严格版面序
+python3 $BIN/pdf_extract.py   原理图.pdf $OUT/sch 160      # Windows/无 poppler：pypdfium2，纯 pip
+#    ★ 本次走了哪条路，要写进交付文档（pypdfium2 是「阅读序」，见「平台 → 用哪个入口」）
 
 # ③ 通读：先看框图页，再逐页看功能页（用 Read 读 $OUT/sch/pages/pg-NN.png）
 #    看不清的区块 -> 300dpi 重渲染该页后局部裁图
 #    ★ 模型没有视觉能力时，跳过本步的"判读"，改为记录待人工确认项（见「模型能力要求」）
-pdftoppm -r 300 -f 8 -l 8 -png 原理图.pdf $OUT/sch/hi8
+pdftoppm -r 300 -f 8 -l 8 -png 原理图.pdf $OUT/sch/hi8                        # Linux：单页 300dpi
+python3 $BIN/pdf_extract.py 原理图.pdf $OUT/sch/hi300 300 --render-only 8      # Windows：同上
 python3 $BIN/img_crop.py $OUT/sch/hi8-08.png $OUT/sch/crop.png 950 1150 2600 2481 1.1
 #    ★ 对照文字层确认网络名拼写：grep -n "SoC_XXX" $OUT/sch/text/原理图.compact.txt
 
@@ -111,11 +141,13 @@ python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv --audit          # ★ 
 python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv \
         --targets $OUT/targets.txt --out $OUT/mux.tsv
 
-# ⑥ 出交付物（表格用 xlsx，叙述用 markdown）
+# ⑥ 出交付物（表格用 xlsx，叙述用 markdown；★ 按平台二选一，--sheet 语法相同）
+#   Linux / 有 LibreOffice：
 python3 $BIN/table_to_xlsx.py $OUT/引脚映射表.xlsx \
         --sheet "0-说明:$OUT/notes.tsv" \
         --sheet "1-底板已用信号:$OUT/sheet1.tsv:2,3.2,2.2,1.6,2.8,4.2,1.2,1.6,6,6" \
         --sheet "2-未使用信号:$OUT/sheet2.tsv:2.2,4,1.6,2.8,2,1.2,7"
+#   Windows / 无 LibreOffice：把命令名换成 table_to_xlsx_openpyxl.py，其余参数一字不改
 
 # ⑦ 交付前必跑
 python3 $BIN/verify_pinmap.py --pinlist $OUT/pinlist.tsv \
@@ -216,10 +248,20 @@ A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E 需按组人�
 12. **抽查不算复查**。第一次交付只抽查了 5 条就发了，后来做全量交叉复查时才发现 4 处真错。**结论性表格必须全量脚本化比对**（这正是 `verify_pinmap.py` 存在的原因）。
 13. **交付前留存原文件哈希**（`sha256sum`），并在文档里写明"原文件只读未改"，客户很在意这点。
 
+### 跨平台 / PDF 引擎
+
+14. **框图页往往是嵌入式图形，而且图上写的型号可能是"旧/通用画法"**。这类页的文字层要么取不到字，要么取到的与细节页不一致 —— 实测遇到过：同一个器件，框图页写的型号与细节页写的**只差一个后缀字母**（略去了具体型号，结论一样）。**以细节页为准**，并把这类差异记进待确认项。这条正是"两层互校"的典型收益：只读图或只读文字层都拿不到这个结论。
+15. **页脚正则不匹配会静默回退成"1 页"** → 连接器页不存在 → 判据 A 恒真 → **所有信号都被判成"用到"**。这是本工具链最危险的一类假结果（看着一切正常，结论全错）。现已改为**切页数 ≤1 时显式报错**；换一份 PDF 若报此错，用 `--page-re` 指定页脚正则，别绕过它。默认已同时兼容 `Sheet N of M` 与 `Sheet: N of M`。
+16. **替换 PDF 引擎会改变文字层的行结构**（poppler `-layout` 严格版面序 vs PDFium「阅读序」）。实测同一份原理图：
+    - 压缩后行数 1907（poppler）vs 3099（PDFium）—— 差在"一行里放了几件事"；
+    - **判据 A/B 的用/未用判定：194 只脚逐脚完全一致**，`verify_pinmap` 的 `[A]~[D]` 也都是 0；
+    - 唯一变差的是**弱判据 `[E]`（负载列器件号邻近性）：43 条 → 64 条**——因为阅读序把网络名和器件位号排得更远，误报自然更多。`[E]` 本来就要按组人工/看图裁决，所以不影响结论，但**走 pypdfium2 时要预留更多看图核对的时间**。
+
 ## 移植边界
 
 | 情况 | 怎么办 |
 |---|---|
+| **Windows / 无系统包** | 用纯 pip 那条路：PDF 提取走 `pdf_extract.py`，xlsx 导出走 `table_to_xlsx_openpyxl.py`（见「平台 → 用哪个入口」与 [`scripts/README-windows.md`](scripts/README-windows.md)） |
 | 模型**不支持多模态** / 视觉弱 | 见上文「模型能力要求」：文本层能做的照做，**看图才能定的全部标"待人工确认"，不要硬猜**；交付文档里注明哪些结论未经图像确认 |
 | 原理图是扫描件（无文字层） | `pdftotext` 出空 → 只能走图像路线，用 Read 逐页读；或先 OCR（tesseract，中文需 chi_sim）再走流程 |
 | 引脚表不是 xlsx（PDF/网页/CSV） | `pin_usage.py`/`pin_mux_table.py` 只要 TSV，`--name-col` 等参数指对列即可 |

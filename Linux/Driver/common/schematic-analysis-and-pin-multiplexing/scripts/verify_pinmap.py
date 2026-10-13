@@ -34,11 +34,11 @@ DESIG = re.compile(r'\b(?:U|R|C|Q|D|J|CON|SW|JP|L|FB|TP|Y)\d{2,5}\b')
 def read_tsv(path):
     rows = []
     for line in open(path, encoding='utf-8', errors='replace'):
-        rows.append([c.strip() for c in line.rstrip('\n').split('\t')])
+        rows.append([c.strip() for c in line.rstrip('\r\n').split('\t')])   # 兼容 CRLF
     return rows
 
 
-def split_pages(lines, page_re=r'Sheet\s+(\d+)\s+of\s+(\d+)'):
+def split_pages(lines, page_re=r'Sheet:?\s*(\d+)\s+of\s+(\d+)'):
     ends = OrderedDict()
     rx = re.compile(page_re, re.I)
     for i, l in enumerate(lines):
@@ -67,6 +67,8 @@ def main():
     ap.add_argument('--conn-page', type=int, default=3)
     ap.add_argument('--window', type=int, default=8)
     ap.add_argument('--skip', default='GND')
+    ap.add_argument('--page-re', default=r'Sheet:?\s*(\d+)\s+of\s+(\d+)',
+                    help='页脚正则（默认兼容带/不带冒号）')
     ap.add_argument('--pin-rx', default=r'^(\d+|L\d+)$',
                     help='引脚号形状（不匹配的行视为说明行，忽略）')
     a = ap.parse_args()
@@ -86,7 +88,9 @@ def main():
     unused = [r for r in unused if r[0] not in ('核心板引脚',)]
 
     lines = open(a.sch, encoding='utf-8', errors='replace').read().splitlines()
-    pages = split_pages(lines)
+    pages = split_pages(lines, a.page_re)
+    if len(pages) <= 1:            # ★ 同 pin_usage.py：静默回退成 1 页会让结论全错
+        sys.exit(f'切页失败（<=1 页）：页脚格式可能与 --page-re 不符；请指定正确正则。')
     other = '\n'.join(l for p, ls in pages.items() if p != a.conn_page for l in ls)
 
     def crawl(needle):
