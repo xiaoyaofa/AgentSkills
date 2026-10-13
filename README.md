@@ -8,7 +8,7 @@
 | 技能                                                                                                       | 分类         | 平台         | 说明                                                |
 | ---------------------------------------------------------------------------------------------------------- | ------------ | ------------ | --------------------------------------------------- |
 | [`schematic-analysis-and-pin-multiplexing`](Linux/Driver/common/schematic-analysis-and-pin-multiplexing/) | Linux/Driver | common       | 原理图 PDF + 引脚表 → 硬件资源分析／引脚映射表     |
-| [`c7z020-driver-dev`](Linux/Driver/kehu/c7z010_20/tebiandiangong/c7z020-driver-dev/)                      | Linux/Driver | c7z010_20    | MYD-C7Z020 PetaLinux 内核驱动开发（客户：特变电工） |
+| [`c7z020-driver-dev`](Linux/Driver/kehu/c7z010_20/tebiandiangong/c7z020-driver-dev/)                      | Linux/Driver | c7z010_20    | MYD-C7Z020 PetaLinux 内核驱动开发 |
 | [`qt-eglfs-mirror`](Linux/System/am625X/sdk11/qt-eglfs-mirror/)                                           | Linux/System | am625X/sdk11 | AM62x Qt eglfs 双屏同显                             |
 | [`mem-stress`](Linux/System/common/mem-stress/)                                                           | Linux/System | common       | 内存／CPU 压测 + 温度监控                           |
 | [`stm32mp257-overlayfs`](Linux/System/stm32mp257-overlayfs/)                                              | Linux/System | stm32mp257   | Yocto 只读 rootfs + overlay                         |
@@ -34,9 +34,9 @@ claude plugin list                                          # 确认已装
 claude plugin uninstall mem-stress@xiaoyaofa-agentskills    # 卸载
 ```
 
-> 添加市场时 Claude Code 默认走 **SSH** 克隆（日志里的 `Cloning via SSH: git@github.com:...`），
-> 所以本机需要有一个注册到 GitHub 的 SSH key。SSH 不可用时可以改用 git URL 形式：
-> `claude plugin marketplace add https://github.com/xiaoyaofa/AgentSkills.git`
+> 添加市场时 Claude Code **优先尝试 SSH** 克隆（`git@github.com:...`），失败会自动降级到
+> HTTPS（日志里会写 `SSH not configured, cloning via HTTPS`）。公开仓库走 HTTPS 不需要
+> 任何凭据，所以**没有配 GitHub SSH key 也能装**。
 >
 > 若克隆因网络慢而超时，用 `CLAUDE_CODE_PLUGIN_GIT_TIMEOUT_MS` 放宽限制（毫秒，默认 120000）。
 
