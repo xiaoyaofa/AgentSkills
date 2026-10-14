@@ -42,7 +42,8 @@ metadata:
 | `scripts/table_to_xlsx.py` | 多个 TSV → 多 sheet xlsx（FODS + LibreOffice 路线） |
 | `scripts/table_to_xlsx_openpyxl.py` | 同上，**纯 pip 路线**（openpyxl 直写，免 LibreOffice） |
 | `scripts/verify_pinmap.py` | 交付前交叉复查 `[A]~[F]`（引脚表 ↔ 原理图 ↔ 已用/未用两表） |
-| `scripts/check_deliverable_consistency.py` | 交付物**内部**一致性复查：`.md` / 已用表负载列 ↔ 器件清单的「位号↔型号」是否自洽 |
+| `scripts/check_deliverable_consistency.py` | 交付物**内部**一致性复查（位号↔型号）＋ **格式契约**校验（`[5]`） |
+| `assets/output-contract.md` / `assets/report-template.md` | **产物形态契约与 md 骨架模板** —— 产出前先看，见「交付物格式契约」 |
 
 ### 平台 → 用哪个入口（★ 两条路不等价，按平台挑一个，别混用）
 
@@ -111,6 +112,22 @@ pip install pypdfium2 pillow openpyxl
 - 视觉分辨率或小字 OCR 弱的模型，在这里会出**"看似合理的错读"**（比"读不出来"更危险）：比如把 `OSPI0_CSn2` 看成 `OSPI0_RESET_OUT1`、把或门看成缓冲、把 DNP 电阻当成贴了。
 - 判断模型是否胜任的土办法：拿一张 300dpi 的裁图问它"这个电阻的阻值/位号是多少、它贴在哪个网络上"，答案能对得上再往下走。
 
+## 交付物格式契约（★ 动手前先看）
+
+**脚本管"算什么"，契约管"产出长什么样"。** 没有契约时，换个板子 / 换个会话，产物形态就会漂 —— 实测漂过：xlsx 从 5 个 sheet 变 6 个、**少了「器件清单」和「待确认问题」**、已用表**少了 `引脚原名 (Function0)` 与 `底板所需功能 (muxmode)` 两列**（BSP 最要用的两列），还混进了工具内部字段（`置信度`/`判据A命中页`）和 skill 自身的验证结论（"Windows 通用性验证""建议反馈到 Skill"）。
+
+| 物料 | 位置 |
+|---|---|
+| 契约正文（文件名 / 5 个 sheet 的名字与列名 / md 必备章节 / 什么不该进交付物） | [`assets/output-contract.md`](assets/output-contract.md) |
+| md 骨架模板（复制后逐节填） | [`assets/report-template.md`](assets/report-template.md) |
+| **机器校验** | `check_deliverable_consistency.py` 的 **[5]** 一节，不符即退出码 1 |
+
+三条最容易漂的，单独点出来：
+
+1. **文件名要带板名**：`<板名>-引脚映射表.xlsx`、`<板名>-硬件资源分析.md` —— 同一目录下会放多块板的产物。
+2. **5 个 sheet 的名字与列名写死**（顺序也固定）；某板"未使用 0 只"时**保留这张空表**，别删表、更别拿它当过程记录表。
+3. **过程与验证内容不进交付物**：工具内部字段（`置信度`/`判据A命中页`/audit 计数）、sha256、`--conn-page` 这类参数、以及 skill 自身的验证结论 —— 要留就另存 `<板名>-过程记录.md`。交付物是给客户看硬件分析的，不是给工具自己做体检报告的。
+
 ## 标准流程
 
 ```bash
@@ -144,13 +161,16 @@ python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv --audit          # ★ 
 python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv \
         --targets $OUT/targets.txt --out $OUT/mux.tsv
 
-# ⑥ 出交付物（表格用 xlsx，叙述用 markdown；★ 按平台二选一，--sheet 语法相同）
+# ⑥ 出交付物（★ 文件名带板名；5 个 sheet 的名字与列名按 assets/output-contract.md，别自创）
 #   Linux / 有 LibreOffice：
-python3 $BIN/table_to_xlsx.py $OUT/引脚映射表.xlsx \
-        --sheet "0-说明:$OUT/notes.tsv" \
+python3 $BIN/table_to_xlsx.py $OUT/<板名>-引脚映射表.xlsx \
+        --sheet "0-说明:$OUT/notes.tsv:2.6,11" \
         --sheet "1-底板已用信号:$OUT/sheet1.tsv:2,3.2,2.2,1.6,2.8,4.2,1.2,1.6,6,6" \
-        --sheet "2-未使用信号:$OUT/sheet2.tsv:2.2,4,1.6,2.8,2,1.2,7"
+        --sheet "2-未使用信号:$OUT/sheet2.tsv:2.2,4,1.6,2.8,2,1.2,7" \
+        --sheet "3-器件清单:$OUT/devices.tsv:2.6,4,2,1.4,7" \
+        --sheet "4-待确认问题:$OUT/questions.tsv:1,7,7,4"
 #   Windows / 无 LibreOffice：把命令名换成 table_to_xlsx_openpyxl.py，其余参数一字不改
+#   md：照 assets/report-template.md 的骨架写，存成 $OUT/<板名>-硬件资源分析.md
 #   中间产物 .fods 转换成功会自动删掉（免得在交付目录留 200KB 中间件）；要保留加 --keep-fods
 
 # ★ ⑥.5【同步】xlsx 改完确认没问题后，**必须把同一改动同步进 md 的对应章节** ——
@@ -163,7 +183,7 @@ python3 $BIN/verify_pinmap.py --pinlist $OUT/pinlist.tsv \
         --sch $OUT/sch/text/*.compact.txt \
         --used $OUT/sheet1.tsv --unused $OUT/sheet2.tsv
 
-# ⑧ 交付前必跑（二）：交付物内部一致性（.md 与 已用表负载列 的位号↔型号 ↔ 器件清单）
+# ⑧ 交付前必跑（二）：内部一致性（md / 已用表负载列 ↔ 器件清单）+ 格式契约（[5]）
 python3 $BIN/check_deliverable_consistency.py \
         --xlsx $OUT/引脚映射表.xlsx --md $OUT/硬件资源分析.md
 ```
@@ -255,7 +275,9 @@ A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E 需按组人�
 
 **工作顺序（重要）**：**先定 xlsx → 再把同一改动同步进 md → 最后跑这一份复查**。这条顺序不能反 —— 表格是机械列（引脚/ball/muxmode）的来源，md 的叙述要跟着它走；而 md 先写下的判断（器件用途、待确认项）也要回填进表。只改一边，本节的 [1]/[4] 会直接报出来。
 
-[1] 与 [4] 的冲突都会让退出码 = 1。**[4] 是后补的**：早期版本只查 md↔器件清单，而实战里出现的恰恰是"单独看 md 没问题、单独看表也没问题，但两份文件/两份 sheet 之间打架"——光看一处永远发现不了。
+| **[5] 格式契约** | sheet 名单/顺序/列名、md 必备章节、禁用词（工具字段/验证结论/过程参数） | 不符即退出码 1；表结构有意不同时 `--no-format-check` 关掉 |
+
+[1] / [4] / [5] 不符都会让退出码 = 1。**[4] 是后补的**：早期版本只查 md↔器件清单，而实战里出现的恰恰是"单独看 md 没问题、单独看表也没问题，但两份文件/两份 sheet 之间打架"——光看一处永远发现不了。
 
 **这项检查的覆盖面仍然有限**：它只比对 xlsx 里出现过的型号字符串，所以**替代不了"逐页读图校订器件清单"**（见踩坑记录 16），也管不了型号字符串压根没被写进清单的情况。
 
@@ -302,6 +324,9 @@ A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E 需按组人�
     - 压缩后行数 1907（poppler）vs 3099（PDFium）—— 差在"一行里放了几件事"；
     - **判据 A/B 的用/未用判定：194 只脚逐脚完全一致**，`verify_pinmap` 的 `[A]~[D]` 也都是 0；
     - 唯一变差的是**弱判据 `[E]`（负载列器件号邻近性）：43 条 → 64 条**——因为阅读序把网络名和器件位号排得更远，误报自然更多。`[E]` 本来就要按组人工/看图裁决，所以不影响结论，但**走 pypdfium2 时要预留更多看图核对的时间**。
+19. **产物形态也会漂 —— 必须把"长什么样"也做成契约 + 机器校验**。本 skill 早期只定义了流程和检查，没定义产物形态，结果换一块板（25 页原理图、另一个会话、Windows 路线）跑出来：xlsx 从 5 个 sheet 变 6 个、**少了「器件清单」「待确认问题」两张表**、已用表少了 BSP 最要用的 muxmode 两列、还混进了工具字段（`置信度`/`判据A命中页`）和 skill 自身的验证结论。**根因是示例只给了 3 个 sheet** —— 器件清单/待确认问题从没出现在 ⑥ 的示例里，模型就照着示例自由发挥。
+    对策：产物形态写成 [`assets/output-contract.md`](assets/output-contract.md)（文件名 / sheet 名单 / 列名 / md 章节 / 禁用词）+ [`assets/report-template.md`](assets/report-template.md)（md 骨架），并让 `[5]` 机器校验。
+    **方法论**：任何"每次都要产出同一套东西"的流程，**示例必须给全，且要有校验器** —— 示例给一半，等于默认另一半自由发挥；而文档约定会漂，机器校验不会。
 
 ## 移植边界
 

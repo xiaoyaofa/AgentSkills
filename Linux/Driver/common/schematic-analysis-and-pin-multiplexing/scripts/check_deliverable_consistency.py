@@ -26,6 +26,9 @@ md 把隔离电源的位号写成 U6，而同批 xlsx 器件清单写的是 U5�
   [4] xlsx 自己「已用表 → 负载/目标列」里的「位号 型号」是否与器件清单一致
         —— 与 [1] 同性质，只是矛盾出在同一份 xlsx 内部（已用表 vs 器件清单）
         ↑ 冲突同样让退出码 = 1；不适用时用 --no-used-sheet 关掉
+  [5] 格式契约：xlsx 的 sheet 名单/顺序/列名、md 的必备章节、以及"不该进交付物"的
+      禁用词（工具内部字段、skill 验证结论、过程参数）—— 契约见 assets/output-contract.md
+        ↑ 不符让退出码 = 1；表结构有意不同时用 --no-format-check 关掉
 
 已知边界与处理:
   · 只比对 xlsx 里出现过的**型号字符串** —— 所以替代不了"逐页读图校订器件清单"；
@@ -58,6 +61,36 @@ def norm_model(model):
     'ABC123+' 与文本里的 'ABC123' 应视为同一型号。"""
     m = re.split(r'\s*[×x]\s*\d+\s*$', model)[0].strip()
     return m.rstrip('+－- ').strip()
+
+
+# ---- 交付物格式契约（须与 assets/output-contract.md 保持一致）----
+# 为什么机器校验：skill 的脚本管"算什么"，契约管"产出长什么样"。没有它，换个板子/
+# 换个会话产物形态就会漂 —— 实测漂到过：sheet 从 5 个变 6 个、少了「器件清单」和
+# 「待确认问题」、已用表少了 muxmode 两列（BSP 最要用的），还混进了工具内部字段。
+CONTRACT_SHEETS = [
+    ('0-说明',         ['列 / 项', '说明']),
+    ('1-底板已用信号', ['功能分类', '原理图网络', '核心板引脚', 'SoC ball', '引脚原名 (Function0)',
+                        '底板所需功能 (muxmode)', '电平', '原理图页', '负载 / 目标', '备注']),
+    ('2-未使用信号',   ['核心板引脚', '引脚表信号名', 'SoC ball', '引脚原名 (Function0)',
+                        '可复用为 (GPIO 等)', '电平', '备注']),
+    ('3-器件清单',     ['位号', '型号', '类别', '原理图页', '说明']),
+    ('4-待确认问题',   ['序号', '待确认问题', '影响', '结论（客户确认后填）']),
+]
+CONTRACT_MD_SECTIONS = ['概览', '顶层框图', '逐页器件清单', '外设与总线映射', 'SoC 信号使用与空闲',
+                        '电源与复位', '差异', '必须换 mux mode', '待确认问题']
+# 明确"不属于交付物"的标志词：工具内部字段 / skill 自身的验证结论 / 过程参数
+FORBIDDEN = ['判据A命中页', '判据B', 'Windows 通用性验证', '建议反馈到 Skill', '产物清单',
+             'sha256', '--conn-page', '--page-re', '--audit']
+
+
+def dump_sheet(path, sheet):
+    """按 sheet 名（或序号）取整张表，返回 [[列...], [列...]]"""
+    dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
+    r = subprocess.run([sys.executable, '-I', dump, path, '--sheet', str(sheet)],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or not r.stdout.strip():
+        return None
+    return [[c.strip() for c in l.split('\t')] for l in r.stdout.splitlines() if l.strip()]
 
 
 def expand_refs(cell):
@@ -159,6 +192,8 @@ def main():
                     help='已用表里「负载/目标」列的下标（默认 8，与本 skill 的列定义一致）')
     ap.add_argument('--no-used-sheet', action='store_true',
                     help='跳过 [4]（已用表负载列）检查')
+    ap.add_argument('--no-format-check', action='store_true',
+                    help='跳过 [5]（交付物格式契约）检查 —— 表结构有意与契约不同时才用')
     ap.add_argument('--out', help='把报告同时写到文件')
     a = ap.parse_args()
 
@@ -204,6 +239,45 @@ def main():
                        key=lambda x: (re.sub(r'\d', '', x), len(x), x))
     say(f'[3] 器件清单里有、md 完全没提到的位号（{len(only_list)}）: {only_list or "无"}')
     say('')
+
+    # ---- [5] 交付物格式契约：sheet 名单/列名/md 章节/禁用词 ----
+    if not a.no_format_check:
+        v = []
+        # a) sheet 名单与顺序
+        dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
+        listing = subprocess.run([sys.executable, '-I', dump, a.xlsx],
+                                 capture_output=True, text=True).stdout
+        names = [re.sub(r'^\s*\d+\.\s*', '', l).split('  (')[0].strip()
+                 for l in listing.splitlines() if re.match(r'^\s*\d+\. ', l)]
+        want = [n for n, _ in CONTRACT_SHEETS]
+        if names != want:
+            v.append(f'xlsx sheet 名单/顺序不符：实际 {names}；契约要求 {want}')
+        # b) 每个 sheet 的列名
+        for nm, cols in CONTRACT_SHEETS:
+            rows = dump_sheet(a.xlsx, nm)
+            if rows is None:
+                v.append(f'xlsx 缺少 sheet「{nm}」（契约要求有：{[n for n, _ in CONTRACT_SHEETS]}）')
+                continue
+            got = rows[0]
+            if got != cols:
+                v.append(f'sheet「{nm}」列名不符：\n        实际 {got}\n        契约 {cols}')
+        # c) md 必备章节
+        for kw in CONTRACT_MD_SECTIONS:
+            if kw not in txt:
+                v.append(f'md 缺少必备章节（关键词「{kw}」未出现）')
+        # d) 禁用词（工具内部字段 / skill 验证结论 / 过程参数，都不该进交付物）
+        hay = txt + '\n' + (listing or '')
+        for nm, _ in CONTRACT_SHEETS:
+            rows = dump_sheet(a.xlsx, nm) or []
+            hay += '\n' + '\n'.join('\t'.join(r) for r in rows)
+        for bad in FORBIDDEN:
+            if bad in hay:
+                v.append(f'交付物里不该出现「{bad}」（工具字段/验证结论/过程参数 → 应另存过程记录）')
+        say(f'[5] 格式契约（sheet 名单/列名/md 章节/禁用词）: {len(v)} 处不符')
+        for x in v:
+            say(f'    ✗ {x}')
+        say('')
+        all_hard += [('格式契约', x, [], []) for x in v]
 
     # ---- [4] xlsx 自己的「已用表 → 负载/目标列」是否与器件清单一致 ----
     # 这是 [1] 的同胞检查：交付物内部也可能自相矛盾（同一份 xlsx 里，
