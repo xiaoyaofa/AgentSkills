@@ -16,6 +16,11 @@
     # 2) ★ 查漏体检：列出「引脚表引出名 ≠ Function0」的脚
     #    这些脚底板用的很可能不是默认功能。本次实战中正是这一步抓出 2 处真错：
     #    引出名 RESETOUT1 的脚 Function0 其实是 OSPI0_CSn2，真功能在 Function2。
+    #    ★★ 但 --audit 有盲区：判据是"引出名≠Function0"，而一只脚可能引出名与
+    #    Function0 完全相同、底板却仍把它复用成别的功能（如 UART0_RTSn → I2C3_SDA、
+    #    OSPI0_CSn1 → GPIO），这类它直接跳过。实测一块板上 10 个复用目标里 7 个是盲区。
+    #    **权威判据是下面 --targets 输出里 muxmode≠0 的行**（本脚本会标 ★盲区）；
+    #    而"哪些脚需要 targets"只能靠读图 —— 对着每只脚看它接去了哪。
     pin_mux_table.py --pinlist pinlist.tsv --audit
 
 参数（不同厂商引脚表列位不同，按需覆盖）:
@@ -57,18 +62,22 @@ def load(path, nc, bc, fc, nf):
 
 
 def resolve(p, target):
-    """返回 (显示字符串, 是否解析成功)"""
+    """返回 (显示字符串, 是否解析成功, muxmode)。
+
+    muxmode 为 None 表示"没有真的复用"（按 Function0 用 / 启动 strap / 未解析）；
+    是 int（且 != 0）表示底板把这脚换成了别的功能 —— **这才是"复用"的权威判据**。
+    """
     funcs = p['funcs']
     if not target or target.upper() == funcs[0].upper():
-        return (f"{funcs[0]}（Function0，无需复用）" if funcs[0] else '—'), True
+        return (f"{funcs[0]}（Function0，无需复用）" if funcs[0] else '—'), True, None
     if target.startswith('(strap)'):
         g = p['gpio']
         tail = f'；软件读该拨码需 {g} mode {funcs.index(g)}' if g in funcs else ''
-        return f"启动 strap {target[7:]}（复位采样，不占 mux{tail}）", True
+        return f"启动 strap {target[7:]}（复位采样，不占 mux{tail}）", True, None
     for i, fn in enumerate(funcs):
         if fn.upper() == target.upper():
-            return f'{target} (muxmode {i})', True
-    return f'{target} (muxmode 待确认)', False
+            return f'{target} (muxmode {i})', True, i
+    return f'{target} (muxmode 待确认)', False, None
 
 
 def main():
@@ -114,16 +123,34 @@ def main():
                 targets[parts[0]] = parts[1].strip()
 
     out = sys.stdout if a.out == '-' else open(a.out, 'w', encoding='utf-8')
-    out.write('pin\tball\t引出名(Function0)\t底板所需功能(muxmode)\t电平\tGPIO\n')
-    bad = []
+    out.write('pin\tball\t引出名(Function0)\t底板所需功能(muxmode)\t电平\tGPIO\taudit\n')
+    bad, blind = [], []
     for pin, p in pins.items():
-        txt, ok = resolve(p, targets.get(pin, ''))
+        txt, ok, mm = resolve(p, targets.get(pin, ''))
         if not ok:
             bad.append(pin)
-        out.write(f'{pin}\t{p["ball"]}\t{p["funcs"][0]}\t{txt}\t{p["volt"]}\t{p["gpio"]}\n')
+        # ★ audit 盲区：引出名与 Function0 同名，但底板真的换了功能 ——
+        #   `--audit` 的判据是"引出名≠Function0"，这类会被它直接跳过。
+        core = re.sub(r'^(SOC_|SoC_)', '', p['name'].split('/')[0], flags=re.I)
+        same = core.upper() == (p['funcs'][0] or '').upper()
+        if mm is None:
+            flag = '-'
+        elif same:
+            flag = '★盲区'; blind.append(pin)
+        else:
+            flag = '可见'
+        out.write(f'{pin}\t{p["ball"]}\t{p["funcs"][0]}\t{txt}\t{p["volt"]}\t{p["gpio"]}\t{flag}\n')
     if out is not sys.stdout:
         out.close()
-        print(f'{a.out}: {len(pins)} 只脚')
+        n_remux = sum(1 for pin, p in pins.items() if (resolve(p, targets.get(pin, ''))[2] or 0))
+        print(f'{a.out}: {len(pins)} 只脚；其中 **{n_remux} 只真的换了功能**（muxmode≠0）')
+        if blind:
+            print(f'  ★ 但这 {len(blind)} 只 `--audit` 查不到（引出名与 Function0 同名，被它跳过）:')
+            for pin in blind:
+                t = targets.get(pin, '')
+                print(f'      pin{pin:<5} {pins[pin]["name"]:<24} → {t}')
+            print('  → 这类只能靠**读图**发现（看这只脚在原理图上接去了哪）；别只用 --audit 下结论。'
+                  '详见 SKILL.md「查漏法」一节。')
     if bad:
         print(f'★ 有 {len(bad)} 个 target 在功能列表里查不到: {bad}',
               file=sys.stderr)

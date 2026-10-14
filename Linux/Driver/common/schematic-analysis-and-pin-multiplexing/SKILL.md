@@ -221,8 +221,28 @@ python3 $BIN/check_deliverable_consistency.py \
 厂商引脚表的「引脚名」是**引出命名**，不等于 SoC 的 Function0。多数只是写法差异（`SOC_OSPI0_DQ5` ↔ `OSPI0_D5`），但**有少数脚引出的确实不是 Function0**，按 Function0 配 pinctrl 就会配成别的功能。
 
 ```bash
-python3 scripts/pin_mux_table.py --pinlist pinlist.tsv --audit   # 全部列出，逐条判
+python3 scripts/pin_mux_table.py --pinlist pinlist.tsv --audit   # 列出"引出名≠Function0"，逐条判
 ```
+
+**★ 但 `--audit` 只覆盖一半情况，别把它当查漏的全部。** 它的判据是"引出名 ≠ Function0"，
+而**一只脚可以引出名与 Function0 完全同名、底板却仍把它复用成别的功能** —— 这类它**直接跳过**。
+实测同一块板：10 个复用目标里 **7 个是 `--audit` 查不到的盲区**：
+
+| 引脚表引出名 | Function0 | 底板实际当成 | audit |
+|---|---|---|---|
+| `SOC_UART0_RTSN` | `UART0_RTSn` | `I2C3_SDA` (muxmode 2) | **★ 盲区** |
+| `SOC_UART0_CTSN` | `UART0_CTSn` | `I2C3_SCL` (muxmode 2) | **★ 盲区** |
+| `SOC_OSPI0_CSN1` | `OSPI0_CSn1` | `GPIO0_12` (muxmode 7) | **★ 盲区** |
+| `SOC_MMC2_DAT0` | `MMC2_DAT0` | `GPIO0_68` (muxmode 7) | **★ 盲区** |
+| `SOC_GPMC0_BE1N` | `GPMC0_BE1n` | `GPIO0_36` (muxmode 7) | **★ 盲区** |
+| `SOC_MCU_MCAN1_RX` | `MCU_MCAN1_RX` | `MCU_GPIO0_16` (muxmode 7) | **★ 盲区** |
+| `SOC_OSPI0_RESETOUT1` | `OSPI0_CSn2` | `OSPI0_RESET_OUT1` (muxmode 2) | 可见 |
+
+**所以正确的两步法**：
+
+1. **`--audit` 只是线索生成器** —— 提示"这些脚的引出名不等于默认功能"。
+2. **唯一权威的复用清单，是 `--targets` 输出里 `muxmode≠0` 的行**（脚本会在 `audit` 列标 `可见`/`★盲区`，并在末尾汇总"N 只真的换了功能、其中 M 只 audit 查不到"）。
+3. **"哪些脚需要 targets"这一步只能靠读图** —— 逐只看它在原理图上**接去了哪**（接到 I²C 上拉对、接到三极管基极、接到 TVS…），而不是只看它叫什么名字。
 
 实战抓出来的真错（都是"看起来像对的"）：
 
@@ -327,6 +347,9 @@ A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E 需按组人�
 19. **产物形态也会漂 —— 必须把"长什么样"也做成契约 + 机器校验**。本 skill 早期只定义了流程和检查，没定义产物形态，结果换一块板（25 页原理图、另一个会话、Windows 路线）跑出来：xlsx 从 5 个 sheet 变 6 个、**少了「器件清单」「待确认问题」两张表**、已用表少了 BSP 最要用的 muxmode 两列、还混进了工具字段（`置信度`/`判据A命中页`）和 skill 自身的验证结论。**根因是示例只给了 3 个 sheet** —— 器件清单/待确认问题从没出现在 ⑥ 的示例里，模型就照着示例自由发挥。
     对策：产物形态写成 [`assets/output-contract.md`](assets/output-contract.md)（文件名 / sheet 名单 / 列名 / md 章节 / 禁用词）+ [`assets/report-template.md`](assets/report-template.md)（md 骨架），并让 `[5]` 机器校验。
     **方法论**：任何"每次都要产出同一套东西"的流程，**示例必须给全，且要有校验器** —— 示例给一半，等于默认另一半自由发挥；而文档约定会漂，机器校验不会。
+
+20. **查漏工具的判据本身也会有盲区 —— 要问"它按什么判、这个判据漏掉了哪些情况"**。`--audit` 按"引出名 ≠ Function0"判，于是**同名却真复用**的脚被整类跳过（实测一块板 10 个复用目标漏掉 7 个）。这类"工具说没问题"的假阴性最难发现，因为输出看着很正常。
+    对策：给工具**补一条正交判据**（这里是 `muxmode≠0`，与名字无关），并在输出里把两类分开标注（`可见` / `★盲区`）。**凡是靠"某两个字段不相等"来发现问题的检查，都要问一遍"它们相等但问题仍存在"的情况**。
 
 ## 移植边界
 
