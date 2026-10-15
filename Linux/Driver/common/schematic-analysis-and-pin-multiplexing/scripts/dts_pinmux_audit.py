@@ -49,6 +49,30 @@ def norm_ball(b):
     return b.split('/')[0].strip()
 
 
+INC = re.compile(r'^\s*#\s*include\s+"([^"]+)"')
+
+
+def follow_includes(path, seen=None):
+    """沿 `#include "..."` 递归收集**参与这块板编译**的文件（`<...>` 系统头忽略）。
+
+    ★ 为什么必须按入口收：一个厂商 dts 目录里通常躺着同系列的多个变体
+      （`...-6252.dts` / `-6254.dts` / `-6231.dts`）和多个叠加层 `.dtso`，
+      它们的引脚组名往往一模一样（复制来的）。**全目录一起扫 = 把别的板的配置
+      算到本板上**，结果可能多报也可能盖掉。实测这三个变体恰好内容相同所以没出事，
+      但换个厂商就是真错。
+    """
+    seen = set() if seen is None else seen
+    p = os.path.abspath(path)
+    if p in seen or not os.path.isfile(p):
+        return seen
+    seen.add(p)
+    for line in open(p, encoding='utf-8', errors='replace'):
+        m = INC.match(line)
+        if m:
+            follow_includes(os.path.join(os.path.dirname(p), m.group(1)), seen)
+    return seen
+
+
 NODE = re.compile(r'^\s*&([A-Za-z0-9_]+)\s*\{')
 
 
@@ -101,17 +125,37 @@ def scan(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--dts-dir', required=True)
-    ap.add_argument('--entry', help='板级入口 .dts（不给则扫全部 .dts）')
+    ap.add_argument('--dts-dir', help='厂商 dts 目录')
+    ap.add_argument('--entry', help='板级入口 .dts；给了就只扫它的 #include 链，'
+                                   '不给则把目录下所有 .dts/.dtso 一起扫（会合并多块板/变体）')
     ap.add_argument('--pinlist', help='厂商引脚表 TSV（用来 ball → 核心板脚位）')
     ap.add_argument('--used', help='交付物 sheet1 TSV（第 3 列=核心板引脚，第 6 列=底板所需功能）')
     ap.add_argument('--name-col', type=int, default=1)
     ap.add_argument('--ball-col', type=int, default=2)
     a = ap.parse_args()
 
-    files = sorted(f for f in glob.glob(os.path.join(a.dts_dir, '*')) if f.endswith(DTS_SUFFIX))
+    if not (a.dts_dir or a.entry):
+        ap.error('至少给 --dts-dir 或 --entry 之一')
+    if a.entry and not os.path.isfile(a.entry) and a.dts_dir:
+        cand = os.path.join(a.dts_dir, a.entry)
+        if os.path.isfile(cand):
+            a.entry = cand
+
+    if a.entry:
+        if not os.path.isfile(a.entry):
+            sys.exit(f'找不到入口文件: {a.entry}')
+        # 叠加层 .dtso 不是被 #include 的 —— 它们各自编译、运行时叠加，所以单独收不跟 include 链
+        ddir = a.dts_dir or os.path.dirname(os.path.abspath(a.entry))
+        ovl = sorted(f for f in glob.glob(os.path.join(ddir, '*.dtso')))
+        files = sorted(set(follow_includes(a.entry)) | set(ovl))
+        print(f'按入口 {os.path.basename(a.entry)} 的 #include 链 + {len(ovl)} 个叠加层，'
+              f'共 {len(files)} 个文件')
+    else:
+        files = sorted(f for f in glob.glob(os.path.join(a.dts_dir, '*')) if f.endswith(DTS_SUFFIX))
+        print(f'★ 没给 --entry：整个目录 {len(files)} 个 .dts/.dtso 一起扫 —— '
+              f'同系列的多块板/多个变体的引脚组会被合并。能指定入口就指定。')
     if not files:
-        sys.exit(f'{a.dts_dir} 下没有 .dts/.dtsi/.dtso')
+        sys.exit(f'{(a.dts_dir or a.entry)} 下没有 .dts/.dtsi/.dtso')
 
     allgroups, overlays = {}, set()
     for f in files:

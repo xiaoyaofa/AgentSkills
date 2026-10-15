@@ -45,16 +45,18 @@ def read_tsv(path):
 
 
 def split_pages(lines, page_re=r'Sheet:?\s*(\d+)\s+of\s+(\d+)'):
-    ends = OrderedDict()
+    # ★ 按页脚**出现顺序**切，不用页脚里印的号 —— 与 pin_usage.py 同一口径，理由见那边：
+    #   页脚本身可能是错的（重复/跳号），按它当 key 会把两个物理页并成一个桶、页号整体偏移。
     rx = re.compile(page_re, re.I)
-    for i, l in enumerate(lines):
-        m = rx.search(l)
-        if m:
-            ends[int(m.group(1))] = i
-    pages, prev = {}, 0
-    for p in sorted(ends):
-        pages[p] = lines[prev:ends[p] + 1]
-        prev = ends[p] + 1
+    cuts = [(i, int(m.group(1))) for i, l in enumerate(lines) for m in [rx.search(l)] if m]
+    printed = [p for _i, p in cuts]
+    trust = all(b > a for a, b in zip(printed, printed[1:]))   # 严格递增就信印的号
+    pages, prev = OrderedDict(), 0
+    for n, (i, p) in enumerate(cuts, start=1):
+        pages[p if trust else n] = lines[prev:i + 1]
+        prev = i + 1
+    if prev < len(lines):
+        pages[(max(pages) + 1) if pages else 1] = lines[prev:]
     return pages
 
 

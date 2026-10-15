@@ -29,21 +29,41 @@ import sys
 from collections import OrderedDict
 
 
-def split_pages(lines, npages, page_re=r'Sheet:?\s*(\d+)\s+of\s+(\d+)'):
-    """按页脚 'Sheet N of M' 切页（默认兼容带冒号的 'Sheet: N of M'）；返回 {页号: [行...]}"""
-    ends = OrderedDict()
+def split_pages(lines, npages, page_re=r'Sheet:?\s*(\d+)\s+of\s*(\d+)'):
+    """按页脚出现顺序切页，返回 {物理页号: [行...]}。
+
+    ★ 页号用**出现顺序**数，不用页脚里印的那个数字。为什么：
+      实测有原理图页脚本身就是错的 —— 25 页只编到 24，且有一页**重复**标成 "Sheet 15"。
+      按印出来的数字当 key，重复号会**互相覆盖**（前一个物理页的内容整段丢掉），
+      而且从错号往后页号整体偏移 → 交付物"原理图页"列全错，还会连累依赖页号的判据 B。
+      照顺序数则第 N 个页脚就是第 N 个物理页，与它印什么无关。
+    """
     rx = re.compile(page_re, re.I)
-    for i, l in enumerate(lines):
-        m = rx.search(l)
-        if m:
-            ends[int(m.group(1))] = i
-    pages, prev = {}, 0
-    for p in sorted(ends):
-        pages[p] = lines[prev:ends[p] + 1]
-        prev = ends[p] + 1
+    cuts = [(i, int(m.group(1))) for i, l in enumerate(lines) for m in [rx.search(l)] if m]
+    printed = [p for _i, p in cuts]
+    # 印的号**严格递增**就信它 —— 这样"首页没页脚（封面）"的情况也数得对；
+    # 出现重复或跳号才按出现顺序编号（那时印的号已经不可信了）。
+    trust = all(b > a for a, b in zip(printed, printed[1:]))
+    pages, prev = OrderedDict(), 0
+    for n, (i, p) in enumerate(cuts, start=1):
+        pages[p if trust else n] = lines[prev:i + 1]
+        prev = i + 1
     if prev < len(lines):                      # 尾页无页脚时兜底
-        pages.setdefault(len(pages) + 1, lines[prev:])
+        pages[(max(pages) + 1) if pages else 1] = lines[prev:]
     return pages
+
+
+def footer_issues(lines, page_re=r'Sheet:?\s*(\d+)\s+of\s*(\d+)'):
+    """页脚自检 → (顺序错位的 [(物理页, 印出的号, 分母)], 页脚总数, 印出的分母)。
+
+    "顺序错位"专指**印的号与它出现的次序对不上**（重复 / 跳号）—— 这时候页号不可信，
+    只能按物理页序编号。分母与实际页数不符是另一回事（只影响读图的人），分开报。
+    """
+    rx = re.compile(page_re, re.I)
+    footers = [(int(m.group(1)), int(m.group(2)))
+               for l in lines for m in [rx.search(l)] if m]
+    off = [(i, p, t) for i, (p, t) in enumerate(footers, 1) if p != i]
+    return off, len(footers), (footers[0][1] if footers else 0)
 
 
 def main():
@@ -78,6 +98,16 @@ def main():
     if a.conn_page not in pages:
         sys.exit(f'连接器页 {a.conn_page} 不在切出的页号 {sorted(pages)} 中：'
                  f'请用 --conn-page 指定正确的连接器页。')
+    off, nfoot, total = footer_issues(lines, a.page_re)
+    if off:
+        i, p, t = off[0]
+        print(f'★ 页脚编号与物理页序对不上：{len(off)}/{nfoot} 个页脚'
+              f'（自物理第 {i} 页起印成 "Sheet {p} of {t}"）。'
+              f'本工具按**物理页序**编号，交付物页码列同此口径；'
+              f'该缺陷要写进待确认项（原图标题栏该修）。', file=sys.stderr)
+    elif total != nfoot:
+        print(f'★ 页脚分母与实际页数不符（印 "of {total}"，实际 {nfoot} 页）—— '
+              f'页码一律按物理页序，该缺陷写进待确认项。', file=sys.stderr)
     others = '\n'.join(l for p, ls in pages.items() if p != a.conn_page for l in ls)
     conn = pages.get(a.conn_page, [])
     skip = {s.strip().upper() for s in a.skip.split(',') if s.strip()}

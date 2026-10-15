@@ -308,7 +308,26 @@ def main():
         for bad in FORBIDDEN:
             if bad in hay:
                 v.append(f'交付物里不该出现「{bad}」（工具字段/验证结论/过程参数 → 应另存过程记录）')
-        say(f'[5] 格式契约（sheet 名单/列名/md 章节/禁用词）: {len(v)} 处不符')
+        # e) 文件名（契约「一、文件名」）—— 这条原先只在文档里写了三处、没进机器校验，
+        #    实测就漂了：另一份产物叫「引脚映射表.xlsx」，不带板名。
+        #    没进机器校验的规则等于没规则，所以在这里补上。
+        stems = []
+        for fn, suffix in ((os.path.basename(a.xlsx), '引脚映射表.xlsx'),
+                           (os.path.basename(a.md), '硬件资源分析.md')):
+            if fn == suffix:
+                v.append(f'文件名「{fn}」没带板名 —— 契约要求 `<板名>-{suffix}`，'
+                         f'同一目录下会放多块板的产物')
+                stems.append('')
+            elif fn.endswith('-' + suffix) or fn.endswith('_' + suffix):
+                stems.append(fn[:-len(suffix)].rstrip('-_'))
+            else:
+                v.append(f'文件名「{fn}」不符合契约 `<板名>-{suffix}`')
+                stems.append('')
+        if stems[0] and stems[1] and stems[0] != stems[1]:
+            v.append(f'两份交付物的板名不一致：「{stems[0]}」vs「{stems[1]}」—— '
+                     f'必须是同一块板的一对')
+
+        say(f'[5] 格式契约（文件名/sheet 名单/列名/md 章节/禁用词）: {len(v)} 处不符')
         for x in v:
             say(f'    ✗ {x}')
         say('')
