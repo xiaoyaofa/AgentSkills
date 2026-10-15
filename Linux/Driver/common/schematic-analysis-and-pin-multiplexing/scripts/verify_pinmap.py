@@ -12,7 +12,8 @@
   [C] 未用信号反查            —— 被判"未用"的信号不该出现在其他页面上
   [D] 页码列自检              —— 表里写的页号要和原理图实际出现页有交集
   [E] 负载列器件号自检        —— 行里写的器件位号应能在该网络名附近找到（弱判据，需人工判定）
-  [F] 引出名 ≠ Function0 体检 —— 调用 pin_mux_table.py --audit 的逻辑，指出必须核对 muxmode 的脚
+  [F] 引出名落在别处/不在表里 —— 与 pin_mux_table.py 同一套归一化判定，指出必须核对 muxmode 的脚
+  [G] 网络名 ↔「底板所需功能」自相矛盾 —— 网络名写着要换的功能，表里却写"无需复用"（弱判据）
 
 用法:
     verify_pinmap.py --pinlist pinlist.tsv --sch sch.compact.txt \\
@@ -24,9 +25,14 @@
 """
 
 import argparse
+import os
 import re
 import sys
 from collections import Counter, OrderedDict
+
+# 与 pin_mux_table.py 共用同一套"引出名 ↔ Function"归一化判定，免得两处逻辑各写一遍再走偏
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from pin_mux_table import norm, selfcheck        # noqa: E402
 
 DESIG = re.compile(r'\b(?:U|R|C|Q|D|J|CON|SW|JP|L|FB|TP|Y)\d{2,5}\b')
 
@@ -62,11 +68,16 @@ def main():
     ap.add_argument('--used-sig-col', type=int, default=1)
     ap.add_argument('--used-load-col', type=int, default=8)
     ap.add_argument('--used-page-col', type=int, default=7)
+    ap.add_argument('--used-target-col', type=int, default=5,
+                    help='「底板所需功能 (muxmode)」列（0 起），[G] 用它判断是否写了"无需复用"')
     ap.add_argument('--unused-pin-col', type=int, default=0)
     ap.add_argument('--unused-sig-col', type=int, default=1)
     ap.add_argument('--conn-page', type=int, default=3)
     ap.add_argument('--window', type=int, default=8)
     ap.add_argument('--skip', default='GND')
+    ap.add_argument('--g-ignore', default='',
+                    help='[G] 里已裁决为"网络名只是核心板印字、实际按 Function0 用"的引脚号，'
+                         '逗号分隔（裁决理由要写进交付物的备注列）')
     ap.add_argument('--page-re', default=r'Sheet:?\s*(\d+)\s+of\s+(\d+)',
                     help='页脚正则（默认兼容带/不带冒号）')
     ap.add_argument('--pin-rx', default=r'^(\d+|L\d+)$',
@@ -101,7 +112,7 @@ def main():
         return sorted({p for p, ls in pages.items()
                        if p != a.conn_page and any(rx.search(l) for l in ls)})
 
-    errA, errB, errC, errD, warnE, warnF = [], [], [], [], [], []
+    errA, errB, errC, errD, warnE, warnF, warnG = [], [], [], [], [], [], []
 
     # [A] 引脚 ↔ 信号名
     for r in used:
@@ -177,15 +188,40 @@ def main():
         if m:
             warnE.append(f'"{base}": 附近未见 {sorted(m)} —— 需人工看原图判定')
 
-    # [F] 引出名 ≠ Function0
+    # [F] 引出名 ↔ Function 列表（用 pin_mux_table 的归一化判定，别再按字面比 —— 字面比会把
+    #     `SOC_OSPI0_DQ5 ↔ OSPI0_D5` 这种写法差异全报出来，实测 59 条里大半是噪声）
     for pin in p1:                      # 只看已用表里的脚（全表体检见 pin_mux_table --audit）
         p = pins.get(pin)
         if not p:
             continue
-        core = re.sub(r'\s*\(.*?\)', '', p['name'])
-        core = re.sub(r'^(SOC_|SoC_)', '', core, flags=re.I).split('/')[0]
-        if p['funcs'][0] and core.upper() != p['funcs'][0].upper():
-            warnF.append(f'{pin}: 引出名={p["name"]} vs Function0={p["funcs"][0]}')
+        kind, idx, fn = selfcheck(p)
+        if kind == 'elsewhere':
+            warnF.append(f'{pin}: 引出名={p["name"]} 落在 Function{idx}={fn}'
+                         f' —— 底板若按引出名用，就必须 muxmode {idx}')
+        elif kind == 'unknown':
+            warnF.append(f'{pin}: 引出名={p["name"]} 不在该脚功能列表里'
+                         f'（Function0={p["funcs"][0]}）—— 需核对实际功能')
+
+    # [G] 网络名 ↔「底板所需功能」列 自相矛盾（弱判据）
+    #   原理图网络名常常就写着这只脚该用什么功能（如 `SoC_UART1_RXD`）。若该功能落在这个脚的
+    #   Function 列表的下标 ≠0，而第 6 列却写「（Function0，无需复用）」，两处必有一错。
+    #   ★ 实测这一条能抓住"生成脚本把'未判定'兜底成'无需复用'"的事故：某板 17 行网络名写着
+    #     UART1_RXD / VOUT0_DATA16，同一行却印 MCASP0_AFSR / GPMC0_AD8"无需复用"。
+    #   ★ 弱判据：网络名也可能是核心板印字（如 SoC_UART1_DCDn 实际跑 I2C0），命中要人工裁决。
+    g_ignore = {s.strip() for s in a.g_ignore.split(',') if s.strip()}
+    for r in used:
+        pin, net = r[a.used_pin_col], r[a.used_sig_col]
+        if len(r) <= a.used_target_col or pin in g_ignore:
+            continue
+        tgt = r[a.used_target_col]
+        p = pins.get(pin)
+        if not p or not p['funcs'][0] or not ('Function0' in tgt or '无需复用' in tgt):
+            continue
+        n = norm(net)
+        idx = next((i for i, fn in enumerate(p['funcs']) if fn and norm(fn) == n), None)
+        if idx:
+            warnG.append(f'{pin}: 网络名「{net}」对应 Function{idx}={p["funcs"][idx]}，'
+                         f'但表里写「{tgt}」')
 
     # ---------- 汇总 ----------
     print(f'Sheet1(已用) {len(used)} 行 / Sheet2(未用) {len(unused)} 行 / '
@@ -195,7 +231,8 @@ def main():
     print(f'  [C] 未用信号却出现在别页      : {len(errC)}')
     print(f'  [D] 页码列与实际不符          : {len(errD)}')
     print(f'  [E] 负载列存疑（弱判据）      : {len(warnE)}')
-    print(f'  [F] 引出名≠Function0（需核对）: {len(warnF)}')
+    print(f'  [F] 引出名落在别处/不在表里    : {len(warnF)}')
+    print(f'  [G] 网络名↔所需功能 自相矛盾  : {len(warnG)}')
     for tag, arr in (('A', errA), ('B', errB), ('C', errC), ('D', errD)):
         for x in arr:
             print(f'  [X{tag}] {x}')
@@ -212,6 +249,13 @@ def main():
             print(f'      {x}')
         print('      确非 Function0 的 → 写进 targets 文件，'
               '用 pin_mux_table.py --targets 显式给出目标功能。')
+    if warnG:
+        print(f'  ↑ [G] {len(warnG)} 行：网络名与「底板所需功能」列对不上，逐条裁决后再交付。')
+        for x in warnG:
+            print(f'      {x}')
+        print('      两种可能：① 表里的"无需复用"是错的（该换 muxmode）—— **这是事故，必须改**；')
+        print('                ② 网络名只是核心板印字、实际真按 Function0 用 —— 在备注里写明即可。')
+        print('      另：板级 dts 的 pinctrl 是最硬的第三方依据，用 dts_pinmux_audit.py 对拍一遍。')
 
     sys.exit(0 if not (errA or errB or errC or errD) else 1)
 

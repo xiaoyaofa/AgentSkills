@@ -1,6 +1,6 @@
 ---
 name: schematic-analysis-and-pin-multiplexing
-description: 从客户底板原理图 PDF + 厂商核心板引脚表（xlsx）出发，产出《硬件资源分析.md》与《引脚映射表.xlsx》的完整方法与工具链。覆盖：原理图 PDF 双层提取（pdftotext 文字层 + 300dpi 局部裁图，Windows 另有 pypdfium2 纯 pip 路线）、xlsx 免依赖解析（空单元格省略／表头不在首行／尾部列串位等坑）、「底板到底用了哪些核心板信号」的双判据对撞、ball↔GPIO↔muxmode 反查、★「引脚表引出名≠Function0」查漏法、交付前两份复查（引脚表↔原理图 [A]~[F] ＋ 交付物内部一致性 md↔xlsx）、以及「表格用 xlsx、叙述用 markdown」的输出取舍。★ 需多模态视觉：拓扑判读（总线方向／门电路类型／DNP 归属／器件归属）只能读图，纯文本模型须走文中「模型能力要求」一节的降级路径。
+description: 从客户底板原理图 PDF + 厂商核心板引脚表（xlsx）出发，产出《硬件资源分析.md》与《引脚映射表.xlsx》的完整方法与工具链。覆盖：原理图 PDF 双层提取（pdftotext 文字层 + 300dpi 局部裁图，Windows 另有 pypdfium2 纯 pip 路线）、xlsx 免依赖解析（空单元格省略／表头不在首行／尾部列串位等坑）、「底板到底用了哪些核心板信号」的双判据对撞、ball↔GPIO↔muxmode 反查、★ 查漏三源（引脚表自洽反查 / 板级 dts 的 pinctrl 对拍 / 读图 —— 任一条单独用都会漏）、交付物格式契约与骨架文件（5 个 sheet 的 xlsx 骨架 + md 模板，防产物形态漂移）、交付前两份复查（引脚表↔原理图 [A]~[G] ＋ 交付物内部一致性 md↔xlsx）。★ 需多模态视觉：拓扑判读（总线方向／门电路类型／DNP 归属／器件归属）只能读图，纯文本模型须走文中「模型能力要求」一节的降级路径。
 license: MIT
 metadata:
   category: Linux/Driver
@@ -38,12 +38,13 @@ metadata:
 | `scripts/pdf_extract.py` | 同上，**Windows / 无 poppler 入口**（走 pypdfium2，纯 pip） |
 | `scripts/img_crop.py` | 局部裁剪放大，供 Read 工具精读小字（网络名/位号/上下拉） |
 | `scripts/pin_usage.py` | 判定"底板用了哪些核心板信号"，A/B 双判据 + 置信度列 |
-| `scripts/pin_mux_table.py` | 反查 引脚原名(Function0) / 底板所需功能 / muxmode；`--audit` 查漏 |
+| `scripts/pin_mux_table.py` | 反查 引脚原名(Function0) / 底板所需功能 / muxmode；`--audit` = 查漏依据① |
+| `scripts/dts_pinmux_audit.py` | **查漏依据②**：拿板级 dts 的 pinctrl 反查"哪些脚真被换了功能"，自动剔掉 SK 板残留 / 未使能节点 / 叠加层 |
 | `scripts/table_to_xlsx.py` | 多个 TSV → 多 sheet xlsx（FODS + LibreOffice 路线） |
 | `scripts/table_to_xlsx_openpyxl.py` | 同上，**纯 pip 路线**（openpyxl 直写，免 LibreOffice） |
-| `scripts/verify_pinmap.py` | 交付前交叉复查 `[A]~[F]`（引脚表 ↔ 原理图 ↔ 已用/未用两表） |
+| `scripts/verify_pinmap.py` | 交付前交叉复查 `[A]~[G]`（引脚表 ↔ 原理图 ↔ 已用/未用两表） |
 | `scripts/check_deliverable_consistency.py` | 交付物**内部**一致性复查（位号↔型号）＋ **格式契约**校验（`[5]`） |
-| `assets/output-contract.md` / `assets/report-template.md` | **产物形态契约与 md 骨架模板** —— 产出前先看，见「交付物格式契约」 |
+| `assets/output-contract.md` / `assets/report-template.md` / `assets/pinmap-template.xlsx` | **产物形态契约 + md 骨架模板 + xlsx 骨架** —— 产出前先看，见「交付物格式契约」 |
 
 ### 平台 → 用哪个入口（★ 两条路不等价，按平台挑一个，别混用）
 
@@ -91,7 +92,7 @@ pip install pypdfium2 pillow openpyxl
 |---|---|
 | 看门狗 WDI 接在哪只脚（文本层 `MR WDI SoC_GPMC0_AD0/BOOTMODE00` 顺序可两解） | `RESETOUT1`/`ECC_FAIL` 的 Function0 陷阱（`--audit` 抓） |
 | U13/U14 是**或门**而非缓冲（文本只有 `GND Vcc / B / Y 4 R78`） | OSPI 的 LBCLK/DQS 连线 |
-| 三个 LC0504F 谁属 SD、谁属 JTAG（文本里交错排列） | 双千兆 PHY 型号（文本层也有 `YT8531H-CA`） |
+| 三个 ESD 器件谁属 SD、谁属 JTAG（文本里交错排列） | 双千兆 PHY 型号（文本层也有） |
 | 四路 LED 分别由哪个信号驱动 | 189 个信号的"用/未用"统计 |
 | 16 位拨码挂在 BOOTMODE00–15 | |
 | 看门狗支路 D6/R72 是 DNP → 实际不生效（靠 `@`/`DNP_` 区分） | |
@@ -119,8 +120,19 @@ pip install pypdfium2 pillow openpyxl
 | 物料 | 位置 |
 |---|---|
 | 契约正文（文件名 / 5 个 sheet 的名字与列名 / md 必备章节 / 什么不该进交付物） | [`assets/output-contract.md`](assets/output-contract.md) |
+| xlsx 骨架（5 个 sheet、**只有表头**，导出前后拿它对齐形态） | [`assets/pinmap-template.xlsx`](assets/pinmap-template.xlsx) |
 | md 骨架模板（复制后逐节填） | [`assets/report-template.md`](assets/report-template.md) |
 | **机器校验** | `check_deliverable_consistency.py` 的 **[5]** 一节，不符即退出码 1 |
+
+**★ 先做这个检查：`assets/` 目录和上面的骨架文件在不在？**
+不在 = **你手上是旧版 skill 的副本**，产物形态一定会漂（实测过一次：另一个会话拿着旧副本跑，
+产出的 xlsx 是 3 个 sheet、已用表 11 列，多出来的全是契约明令禁止进交付物的工具字段）。
+先 `git pull` 再动手，别硬跑。
+
+```bash
+python3 scripts/xlsx_dump.py <skill>/assets/pinmap-template.xlsx   # 读骨架，看清 5 个 sheet 与列名
+# 导出交付物后，逐字比对：sheet 名、顺序、列名 —— 骨架是权威，不是文档里的描述
+```
 
 三条最容易漂的，单独点出来：
 
@@ -156,12 +168,19 @@ python3 $BIN/pin_usage.py --pinlist $OUT/pinlist.tsv --sch $OUT/sch/text/*.compa
         --out $OUT/usage.tsv
 #    confidence 列 != "A+B 一致" 的，逐条裁图复核
 
-# ⑤ 反查 muxmode（targets 文件：每行 "引脚号 目标功能名"）
-python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv --audit          # ★ 先查漏
+# ⑤ 反查 muxmode —— ★ 查漏三源，任一条单独用都会漏（见「查漏法」一节）
+python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv --audit      # 依据① 候选
+python3 $BIN/dts_pinmux_audit.py --dts-dir <内核>/arch/arm64/boot/dts/<厂商> \
+        --pinlist $OUT/pinlist.tsv --used $OUT/sheet1.tsv             # 依据② 对拍（本板是厂商 EVK 时=标准答案）
+#   依据③ 读图裁决，逐条写进 targets.txt（每行 "引脚号 目标功能名"）：
 python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv \
         --targets $OUT/targets.txt --out $OUT/mux.tsv
+#   ★ 输出里出现「未判定（需裁决）」= 还没查完，逐条补进 targets.txt 再跑一遍。
+#     它**绝不会**默认成"无需复用" —— 那个默认值曾经把 17 只真复用脚写成了"无需复用"。
 
-# ⑥ 出交付物（★ 文件名带板名；5 个 sheet 的名字与列名按 assets/output-contract.md，别自创）
+# ⑥ 出交付物（★ 文件名带板名）
+#   Step 0：先把骨架读出来对齐形态，再照它导出 —— 别凭记忆自创 sheet 名/列名
+python3 $BIN/xlsx_dump.py <skill>/assets/pinmap-template.xlsx
 #   Linux / 有 LibreOffice：
 python3 $BIN/table_to_xlsx.py $OUT/<板名>-引脚映射表.xlsx \
         --sheet "0-说明:$OUT/notes.tsv:2.6,11" \
@@ -181,7 +200,10 @@ python3 $BIN/table_to_xlsx.py $OUT/<板名>-引脚映射表.xlsx \
 # ⑦ 交付前必跑（一）：引脚表 ↔ 原理图 ↔ 两张表
 python3 $BIN/verify_pinmap.py --pinlist $OUT/pinlist.tsv \
         --sch $OUT/sch/text/*.compact.txt \
-        --used $OUT/sheet1.tsv --unused $OUT/sheet2.tsv
+        --used $OUT/sheet1.tsv --unused $OUT/sheet2.tsv \
+        --conn-page <连接器页页码>          # ★ 不给会按默认 3 判，[D] 会冒出成片的假报错
+#   已裁决为"网络名只是核心板印字、实际按 Function0 用"的脚，加 --g-ignore L5,L6,... 跳过
+#   必须 [A]~[D] 全 0 才能交付；[E]/[F]/[G] 是弱判据，逐条给结论
 
 # ⑧ 交付前必跑（二）：内部一致性（md / 已用表负载列 ↔ 器件清单）+ 格式契约（[5]）
 python3 $BIN/check_deliverable_consistency.py \
@@ -218,44 +240,66 @@ python3 $BIN/check_deliverable_consistency.py \
 
 **交叉验证技巧**：如果手上有厂商现成的同平台设备树，拿它的 pinctrl 对一遍。本次 A15 反查得 `I2C3_SCL → muxmode 2`，与厂商 BSP 里 `AM62X_IOPAD(0x1d0, PIN_INPUT_PULLUP, 2) /* (A15) UART0_CTSn.I2C3_SCL */` 完全一致，说明表和推导都对。
 
-### 4. ★ 查漏法：凡"引脚表引出名 ≠ Function0"的脚，都要单独确认
+### 4. ★ 查漏法：三个依据取并集，**任一条单独用都会漏**
 
 厂商引脚表的「引脚名」是**引出命名**，不等于 SoC 的 Function0。多数只是写法差异（`SOC_OSPI0_DQ5` ↔ `OSPI0_D5`），但**有少数脚引出的确实不是 Function0**，按 Function0 配 pinctrl 就会配成别的功能。
 
+**三个依据，逐条都有它看不见的东西：**
+
+| # | 依据 | 工具 | 看得见 | **看不见** |
+|---|---|---|---|---|
+| ① | 引脚表自洽反查：引出名归一化后落在 Function 列表的哪一位 | `pin_mux_table.py --audit` | 引出名是 `UART1_RXD`、Function0 却是 `MCASP0_AFSR` 这类 | **引出名与 Function0 完全同名、底板却换了功能**的脚（整类跳过） |
+| ② | 与板级 dts 的 pinctrl 逐条对拍 | `dts_pinmux_audit.py` | ①看不见的那些（dts 里 `muxmode≠0` 就是答案） | 客户自研板上**厂商 BSP 还没配**的脚；它也不知道硬件真实跳线 |
+| ③ | 读图：看这只脚**接去了哪** | 人 / 多模态模型 | ①②都没有的、图上靠 0R 跳线/双标签做的复用 | 慢，且容易看错方向 |
+
+**原理图若是厂商自家的 EVK，② 就是标准答案**（BSP 的 pinctrl 是照这块板写的），先跑它，能省掉大量读图。
+**客户自研板则 ② 只能当参考**（厂商 BSP 里往往还留着芯片厂 SK 板的残留配置），必须以 ③ 定案。
+
 ```bash
-python3 scripts/pin_mux_table.py --pinlist pinlist.tsv --audit   # 列出"引出名≠Function0"，逐条判
+python3 scripts/pin_mux_table.py   --pinlist pinlist.tsv --audit      # ① 候选：引出名落在哪一位
+python3 scripts/dts_pinmux_audit.py --dts-dir arch/arm64/boot/dts/<厂商> \
+        --entry <板级>.dts --pinlist pinlist.tsv --used sheet1.tsv     # ② 对拍（能直接查出交付物的错行）
+# ③ 读图裁决，把结论写进 targets.txt：
+python3 scripts/pin_mux_table.py   --pinlist pinlist.tsv --targets targets.txt --out mux.tsv
 ```
 
-**★ 但 `--audit` 只覆盖一半情况，别把它当查漏的全部。** 它的判据是"引出名 ≠ Function0"，
-而**一只脚可以引出名与 Function0 完全同名、底板却仍把它复用成别的功能** —— 这类它**直接跳过**。
-实测同一块板：10 个复用目标里 **7 个是 `--audit` 查不到的盲区**：
+**★ 输出里出现「未判定（需裁决）」就是还没查完。** 脚本对"没给目标的脚"一律这么标 ——
+**绝不默认成"无需复用"**。这个默认值曾经直接进过交付物：原理图网络名明明写着 `SOC_UART1_RXD`，
+同一行的「底板所需功能」却印成 `MCASP0_AFSR（Function0，无需复用）`（板级 dts 是 mux 2）。
+**"未给目标"是没判定，不是不需要复用**；只有显式给出目标、且目标 == Function0，才算无需复用。
+（批量补：把自检结果为"引出名 == Function0"的脚整批写成 `<脚> <Function0>` 丢进 targets 文件。）
 
-| 引脚表引出名 | Function0 | 底板实际当成 | audit |
-|---|---|---|---|
-| `SOC_UART0_RTSN` | `UART0_RTSn` | `I2C3_SDA` (muxmode 2) | **★ 盲区** |
-| `SOC_UART0_CTSN` | `UART0_CTSn` | `I2C3_SCL` (muxmode 2) | **★ 盲区** |
-| `SOC_OSPI0_CSN1` | `OSPI0_CSn1` | `GPIO0_12` (muxmode 7) | **★ 盲区** |
-| `SOC_MMC2_DAT0` | `MMC2_DAT0` | `GPIO0_68` (muxmode 7) | **★ 盲区** |
-| `SOC_GPMC0_BE1N` | `GPMC0_BE1n` | `GPIO0_36` (muxmode 7) | **★ 盲区** |
-| `SOC_MCU_MCAN1_RX` | `MCU_MCAN1_RX` | `MCU_GPIO0_16` (muxmode 7) | **★ 盲区** |
-| `SOC_OSPI0_RESETOUT1` | `OSPI0_CSn2` | `OSPI0_RESET_OUT1` (muxmode 2) | 可见 |
+**② 是最容易被做错的一步**，因为**厂商 dts 里到处是噪声**，不能只 grep"第三个参数 ≠ 0"：
 
-**所以正确的两步法**：
+- 从芯片厂 SK 板抄来、**压根没被 `pinctrl-N` 引用**的引脚组（实测一块板 85 个组里 50 多个是这种）；
+- **可选外设的叠加层 `.dtso`**（LVDS 屏 / HDMI 音频）—— 装了才生效，要单独写成"可选配置"；
+- **同一批脚的多套互斥配置**，只有一套被引用；
+- 引用它的节点 `status = "disabled"` —— 不申请引脚，那些脚其实是空的；
+- **MCU 域的脚用的是另一个宏**（`AM62X_MCU_IOPAD`），只匹配主域会整片漏掉；
+- **两只脚被两个都 enabled 的节点配成不同功能** —— 那是 dts 真冲突（谁后 probe 谁赢），
+  交付物里要写成待确认，别默默按某一个写。
 
-1. **`--audit` 只是线索生成器** —— 提示"这些脚的引出名不等于默认功能"。
-2. **唯一权威的复用清单，是 `--targets` 输出里 `muxmode≠0` 的行**（脚本会在 `audit` 列标 `可见`/`★盲区`，并在末尾汇总"N 只真的换了功能、其中 M 只 audit 查不到"）。
-3. **"哪些脚需要 targets"这一步只能靠读图** —— 逐只看它在原理图上**接去了哪**（接到 I²C 上拉对、接到三极管基极、接到 TVS…），而不是只看它叫什么名字。
+实测：naive grep 得到 38 处 ≠0，其中 20 处是上面这些噪声 —— **直接采信会写出错误的交付物**。
 
 实战抓出来的真错（都是"看起来像对的"）：
 
-| 引脚表引出名 | Function0 | 底板真要用的功能 | 如果按 Function0 配会怎样 |
-|---|---|---|---|
-| `SOC_OSPI0_RESETOUT1` | `OSPI0_CSn2` | `OSPI0_RESET_OUT1` **(muxmode 2)** | flash 的复位脚变成一个片选 |
-| `SOC_OSPI0_ECC_FAIL` | `OSPI0_CSn3` | `OSPI0_ECC_FAIL` **(muxmode 2)** | flash 的 INT 脚变成另一个片选 |
-| `SOC_UART0_CTSN` | `UART0_CTSn` | `I2C3_SCL` **(muxmode 2)** | RTC 的 I²C 完全不通 |
-| `SOC_OSPI0_CSN1` | `OSPI0_CSn1` | `GPIO0_12` **(muxmode 7)** | 指示灯不亮 |
+| 引脚表引出名 | Function0 | 底板真要用的功能 | 如果按 Function0 配会怎样 | 谁查出来的 |
+|---|---|---|---|---|
+| `SOC_OSPI0_RESETOUT1` | `OSPI0_CSn2` | `OSPI0_RESET_OUT1` **(2)** | flash 的复位脚变成一个片选 | ① |
+| `SOC_OSPI0_ECC_FAIL` | `OSPI0_CSn3` | `OSPI0_ECC_FAIL` **(2)** | flash 的 INT 脚变成另一个片选 | ① |
+| `SOC_UART1_RXD` | `MCASP0_AFSR` | `UART1_RXD` **(2)** | WiFi/BT 串口完全不通 | ① |
+| `SOC_UART4_RXD` | `GPMC0_CSn2` | `UART4_RXD` **(3)** | RS-485 完全不通 | ① |
+| `SOC_VOUT0_DATA16` | `GPMC0_AD8` | `VOUT0_DATA16` **(1)** | HDMI/LCD 没有图像 | ① |
+| `SOC_UART0_CTSN` | `UART0_CTSn` | `I2C3_SCL` **(2)** | RTC 的 I²C 完全不通 | ② |
+| `SOC_OSPI0_CSN1` | `OSPI0_CSn1` | `GPIO0_12` **(7)** | 指示灯不亮 | ② |
+| `SOC_GPMC0_BE1N` | `GPMC0_BE1n` | `GPIO0_36` **(7)** | 按键无响应 | ② |
+| `SOC_GPMC0_WAIT1` | `GPMC0_WAIT1` | `UART6_RXD` **(3)** | RS-485 通道 2 完全不通 | **① ② 都看不见，只有 ③ 能发现** |
 
 这类错误的共同特征：**引脚表名字里带的是"这只脚在核心板上叫什么"，不是"SoC 内部这个焊盘默认是什么"**。凡是带 `/` 的（`SOC_GPMC0_AD0/BOOTMODE00`）就是"默认功能 + 复用/strap 用途"两层含义，要分开看。
+
+**反向的坑同样存在**：引出名也**可能只是核心板印字**。某只脚的引出名叫 `SOC_UART1_DCDn`，
+它的 Function0 却是 `I2C0_SCL`，底板真的就按 I2C0 用 —— 这时 ① 报出来的"可能是 muxmode 4"是**虚警**，
+要在备注里写清"引出名是印字，实际用 Function0"，并把它加进 `verify_pinmap.py --g-ignore`。
 
 ### 5. 输出格式：表格用 xlsx，叙述用 markdown
 
@@ -268,18 +312,20 @@ xlsx 里务必留一个 **「0-说明」sheet**，写清每列的语义、muxmod
 
 ## 交付前必跑的两份复查
 
-### 第一份：交叉复查 `[A]~[F]`（`verify_pinmap.py`）
+### 第一份：交叉复查 `[A]~[G]`（`verify_pinmap.py`）
 
 | 检查 | 抓什么 |
 |---|---|
 | **A** 引脚↔信号名一致性 | 表里写的"引脚 2xx / ball …"与厂商表逐行比对，防手抄错位 |
 | **B** 划分完整性 | 已用表 + 未用表必须**互斥且覆盖除 GND/电源外的全部引脚**（本次 222 脚 = 106+88+28GND，一个不多一个不少） |
 | **C** 未用信号反查 | 被判"未用"的信号不该出现在其他页面上 |
-| **D** 页码列自检 | 表里写的页号要与原理图实际出现页有交集 |
+| **D** 页码列自检 | 表里写的页号要与原理图实际出现页有交集。**首次跑多半会成片报错 —— 十有八九是 `--conn-page` 没给对**（默认 3） |
 | **E** 负载列器件号（弱判据） | 行里写的位号应能在该网络名附近找到。**大批量报错基本是 PDF 文字层排版导致的误报**，按组核对（同一 PHY / 同一 flash 看一次图就够），别逐条抠 |
-| **F** 引出名≠Function0 | 见上节第 4 条 |
+| **F** 引出名落在别处/不在表里（弱判据） | 见上节第 4 条的依据①：报告"引出名落在 Function{i}"或"引出名不在功能列表里"的脚 |
+| **G** 网络名↔「底板所需功能」自相矛盾（弱判据） | **专抓"表里的'无需复用'是错的"**：原理图网络名常常就写着这只脚该用的功能，若该功能在该脚 Function 列表里下标 ≠0、而表里写「（Function0，无需复用）」，两处必有一错。两种可能：① 表错了（**事故，必须改**）② 网络名只是核心板印字（在备注里写明，并加 `--g-ignore`） |
 
-A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E 需按组人工裁决；F 必须逐条给出结论。
+A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E/F/G 是弱判据，必须**逐条给出结论**而不是放着不管。
+`[G]` 是这条链上最后一道网 —— 实测它抓出过 17 行"网络名写着 UART1_RXD / VOUT0_DATA16，同一行却印着 MCASP0_AFSR'无需复用'"。
 
 ### 第二份复查：交付物内部一致性（`check_deliverable_consistency.py`）
 
@@ -356,6 +402,18 @@ A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E 需按组人�
 21. **页脚编号可能与 PDF 物理页码对不上**（重复标号 / 跳号 / 分母与实际页数不符）。实测一份 25 页的原理图，页脚只编到 24、且**有一页的标题栏重复标成 "Sheet 15"** —— 结果：① 工具按页脚切页会把两页并成一页（内容的页归属错）② "原理图页"列出现两套语义（页脚号 vs 阅读器显示的页号），交接时必然对不上。
     **处理**：先做一次"PDF 物理页 ↔ 页脚编号"的映射核对（按 `` 切原始 `pdftotext` 输出，逐页抓页脚号，看是否连续），不连续就把中间产物的页脚**统一成物理页码**再往下跑，并把该缺陷记进交付物的待确认项（这是原理图本身的问题，客户该知道）。
     核对命令模式：`split by \f → 每页 grep 'Sheet...of' → 打印 (物理页, 页脚号)`；一致的才可以直接用页脚号。
+
+22. **★ 工具自己的"默认值"会把"我没判定"伪装成"结论"** —— 这是本项目最贵的一次事故。`pin_mux_table.py` 原先对"targets 里没给目标的脚"一律输出「（Function0，无需复用）」，于是 **17 只真复用脚的交付物行自相矛盾**：原理图网络名明明写着 `SOC_UART1_RXD` / `SOC_VOUT0_DATA16`，同一行的「底板所需功能」却印成 `MCASP0_AFSR` / `GPMC0_AD8`「无需复用」，而板级 dts 分别要求 mux 2 / mux 1。
+    根因不是算错，是**兜底值选错了**：把一个"未知"填成了看似确定的结论，而这个默认值一路流进了客户交付物，两份复查当时也看不出来（直到拿第二份独立产物对比才发现）。
+    **对策**：① 未知就输出「未判定（需裁决）」，凡是"未给输入"的分支都不许产出结论性文字；② `verify_pinmap.py` 的 **[G]** 专抓这一类（网络名 ↔ 所需功能列）；③ **"无需复用"只能由显式给出 `目标 == Function0` 得出**，且理由来自引脚表自洽（引出名归一化后就是 Function0），不是"没写"。
+    **一般化的教训**：写这类生成脚本时，逐个分支问一遍"这一支的输出，读者会当成事实吗？" —— 会，就不能填默认值。
+
+23. **★ 厂商 BSP 的 pinctrl 是最硬的第三方依据（查漏判据②）** —— 原理图若是厂商自家的 EVK，**BSP 里 `AM62X_IOPAD(..., N)` 的第 3 个参数就是这块板的标准答案**，比读图快得多也准得多。本次一条命令查出 31 处 muxmode≠0，其中 **14 处是判据①（`--audit`）根本看不见的**。
+    **但绝不能只 grep "第三个参数 ≠ 0"** —— 实测 38 处里 20 处是噪声：从芯片厂 SK 板抄来且**从没被引用**的引脚组（某板 33 个组里 4 个是孤儿）、**装了才生效的叠加层 `.dtso`**、**同一批脚的多套互斥配置**、引用它的节点 **`status="disabled"`**、**MCU 域用另一个宏** `AM62X_MCU_IOPAD`（只匹配主域会整片漏）、以及**两只脚被两个都 enabled 的节点配成不同功能**（那是 dts 真冲突，要写成待确认）。
+    **对策**：写成 `dts_pinmux_audit.py`，按"被引用 + 节点 enabled + 按文件分叠加层"分组输出，并与交付物对拍。
+
+24. **交付物形态：在文档里写清楚 ≠ agent 会照做** —— 契约（5 个 sheet / 列名 / md 章节）写进 markdown 之后，换个会话照样漂：实测另一份产物是 **3 个 sheet**、已用表 **11 列**，多出来的全是契约明令禁止的工具字段（`判据A命中页`/`置信度`/`负载器件(弱判据)`），md 也写成了"方法学 + 自检报告"。而且那份产物**通篇没提过契约/模板**，说明它多半是拿着**旧副本**在跑。
+    **对策**：① 把形态做成**可复制的骨架文件**（`assets/pinmap-template.xlsx`），让人和 agent 直接照着它比，而不是读一段描述去"理解"；② 加一条前置自检 **"`assets/` 或骨架文件不在 = 你手上是旧副本，先同步"**，把"没读到"从静默变成响亮的失败。
 
 ## 移植边界
 

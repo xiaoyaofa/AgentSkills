@@ -10,7 +10,7 @@
 |---|---|---|
 | PDF 双层提取 | `pdf_schematic_extract.sh`（poppler） | **`pdf_extract.py`**（pypdfium2） |
 | xlsx 导出 | `table_to_xlsx.py`（FODS + LibreOffice） | **`table_to_xlsx_openpyxl.py`**（openpyxl） |
-| 其余脚本 | `xlsx_dump.py`、`pin_usage.py`、`pin_mux_table.py`、`verify_pinmap.py`、`img_crop.py` | 同一份，跨平台通用 |
+| 其余脚本 | `xlsx_dump.py`、`pin_usage.py`、`pin_mux_table.py`、`dts_pinmux_audit.py`、`verify_pinmap.py`、`check_deliverable_consistency.py`、`img_crop.py` | 同一份，跨平台通用（纯标准库） |
 
 **两条 PDF 路线不等价，别当成同一个东西**：
 
@@ -59,20 +59,25 @@ python %BIN%\pin_usage.py --pinlist %OUT%\pinlist.tsv ^
 python %BIN%\pin_mux_table.py --pinlist %OUT%\pinlist.tsv --audit
 
 :: ⑤ 出 xlsx（免 LibreOffice）
-python %BIN%\table_to_xlsx_openpyxl.py %OUT%\引脚映射表.xlsx ^
+python %BIN%\table_to_xlsx_openpyxl.py %OUT%\板名-引脚映射表.xlsx ^
        --sheet "0-说明:%OUT%\notes.tsv:2.6,11" ^
-       --sheet "1-已用信号:%OUT%\sheet1.tsv:2,3.2,2.2,1.6,2.8,4.2"
+       --sheet "1-底板已用信号:%OUT%\sheet1.tsv:2,3.2,2.2,1.6,2.8,4.2"
 ```
 
 > `--sheet "表名:路径[:列宽]"` 里**路径带盘符是支持的**（`D:\work\used.tsv` 或 `D:/work/used.tsv` 都行）：解析规则是"第一个 `:` 前是表名，末尾那段只有形如 `2,3.5` 才当列宽"。
 
 ```bash
-:: 交付前必跑（二）：交付物内部一致性（md / 已用表负载列 的位号↔型号 ↔ 器件清单）
+:: 交付前必跑（一）：引脚表 ↔ 原理图 ↔ 两张表
 python %BIN%\verify_pinmap.py --pinlist %OUT%\pinlist.tsv ^
-       --sch %OUT%\sch\text\*.compact.txt --used %OUT%\sheet1.tsv --unused %OUT%\sheet2.tsv
+       --sch %OUT%\sch\text\*.compact.txt --used %OUT%\sheet1.tsv --unused %OUT%\sheet2.tsv ^
+       --conn-page 24
+:: 交付前必跑（二）：交付物内部一致性（md / 已用表负载列 的位号↔型号 ↔ 器件清单）+ 格式契约
 python %BIN%\check_deliverable_consistency.py ^
-       --xlsx %OUT%\引脚映射表.xlsx --md %OUT%\硬件资源分析.md
+       --xlsx %OUT%\板名-引脚映射表.xlsx --md %OUT%\板名-硬件资源分析.md
 ```
+
+> **★ 导出 xlsx 前，先拿骨架对齐形态**：`python %BIN%\xlsx_dump.py <skill>\assets\pinmap-template.xlsx`
+> —— 5 个 sheet 的名字、顺序、列名以它为准。**`assets\` 目录不在 = 你手上是旧版 skill 的副本，先拉最新的。**
 
 ## 四、注意事项
 

@@ -47,7 +47,7 @@ import subprocess
 import sys
 
 # 位号形状：U3 / Q10 / L7 / FB1 / Y2 / CON7 / JP1 / SW4 / D14 / LCM1 …
-REF = r'[UQD]\d{1,2}|J\d{1,2}|L\d{1,4}|FB\d|Y\d|LCM\d|CON\d|JP\d|SW\d|PWR\d|SA\d{1,2}|F\d{1,2}|RZ\d'
+REF = r'[UQD]\d{1,2}|J\d{1,2}|L\d{1,4}|FB\d|Y\d|LCM\d|CON\d|JP\d|SW\d|PWR\d|SA\d{1,2}|F\d{1,2}|RZ\d|S\d{1,2}'
 # 位号与型号之间的"绑定"分隔符：只允许空白与 = / :，显式排除 → -> | 等
 BIND = r'\s*(?:[=＝:：]\s*)?'
 # 型号后面"跟着的必须不是字母数字" —— 用这个而不是 \b：\b 要求两侧一个是词字符，
@@ -91,6 +91,15 @@ def dump_sheet(path, sheet):
     if r.returncode != 0 or not r.stdout.strip():
         return None
     return [[c.strip() for c in l.split('\t')] for l in r.stdout.splitlines() if l.strip()]
+
+
+def sheet_names_of(path):
+    """xlsx 里的 sheet 名单（按顺序）。"""
+    dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
+    listing = subprocess.run([sys.executable, '-I', dump, path],
+                             capture_output=True, text=True).stdout
+    return [re.sub(r'^\s*\d+\.\s*', '', l).split('  (')[0].strip()
+            for l in listing.splitlines() if re.match(r'^\s*\d+\. ', l)]
 
 
 def expand_refs(cell):
@@ -184,8 +193,8 @@ def load_used_column(path, sheet, col):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--xlsx', required=True, help='引脚映射表.xlsx')
-    ap.add_argument('--md', required=True, help='硬件资源分析.md')
+    ap.add_argument('--xlsx', help='引脚映射表.xlsx')
+    ap.add_argument('--md', help='硬件资源分析.md')
     ap.add_argument('--sheet', default='4', help='器件清单所在 sheet（默认 4，也可以是名字）')
     ap.add_argument('--used-sheet', default='2', help='已用信号表所在 sheet（默认 2）')
     ap.add_argument('--load-col', type=int, default=8,
@@ -195,7 +204,37 @@ def main():
     ap.add_argument('--no-format-check', action='store_true',
                     help='跳过 [5]（交付物格式契约）检查 —— 表结构有意与契约不同时才用')
     ap.add_argument('--out', help='把报告同时写到文件')
+    ap.add_argument('--check-template', metavar='TPL.xlsx',
+                    help='只校验骨架文件（assets/pinmap-template.xlsx）与契约表是否仍一致，'
+                         '不检查交付物 —— 骨架是二进制，没人改就没人发现它过期了')
     a = ap.parse_args()
+
+    # ---- 骨架自检（--check-template）：骨架是二进制，与契约表对不上就没人发现它过期了 ----
+    if a.check_template:
+        tpl = a.check_template
+        if not os.path.isfile(tpl):
+            sys.exit(f'找不到骨架文件: {tpl}')
+        bad = []
+        names = sheet_names_of(tpl)
+        want = [n for n, _ in CONTRACT_SHEETS]
+        if names != want:
+            bad.append(f'sheet 名单/顺序不符：实际 {names}；契约要求 {want}')
+        for nm, cols in CONTRACT_SHEETS:
+            rows = dump_sheet(tpl, nm)
+            if rows is None:
+                bad.append(f'缺 sheet「{nm}」')
+            elif rows[0] != cols:
+                bad.append(f'sheet「{nm}」列名不符：\n        实际 {rows[0]}\n        契约 {cols}')
+        print(f'# 骨架自检: {os.path.basename(tpl)}')
+        print(f'  sheet 名单 / 列名 与契约表比对: {len(bad)} 处不符')
+        for x in bad:
+            print(f'    ✗ {x}')
+        if not bad:
+            print('  ✅ 骨架与契约一致。')
+        sys.exit(1 if bad else 0)
+
+    if not (a.xlsx and a.md):
+        ap.error('要么给 --xlsx + --md 检查交付物，要么给 --check-template 检查骨架文件')
 
     for p in (a.xlsx, a.md):
         if not os.path.isfile(p):
@@ -212,7 +251,7 @@ def main():
     say(f'器件清单: {len(ref2model)} 个位号 / {len(model2refs)} 个型号')
     say('')
 
-    all_hard, all_soft = [], []
+    all_hard, all_soft, fmt_violations = [], [], []
 
     # ---- [1] md 里的「位号 型号」配对是否与清单一致 ----
     hard, soft = scan_bindings(txt, model2refs, ref2model)
@@ -244,11 +283,7 @@ def main():
     if not a.no_format_check:
         v = []
         # a) sheet 名单与顺序
-        dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
-        listing = subprocess.run([sys.executable, '-I', dump, a.xlsx],
-                                 capture_output=True, text=True).stdout
-        names = [re.sub(r'^\s*\d+\.\s*', '', l).split('  (')[0].strip()
-                 for l in listing.splitlines() if re.match(r'^\s*\d+\. ', l)]
+        names = sheet_names_of(a.xlsx)
         want = [n for n, _ in CONTRACT_SHEETS]
         if names != want:
             v.append(f'xlsx sheet 名单/顺序不符：实际 {names}；契约要求 {want}')
@@ -266,7 +301,7 @@ def main():
             if kw not in txt:
                 v.append(f'md 缺少必备章节（关键词「{kw}」未出现）')
         # d) 禁用词（工具内部字段 / skill 验证结论 / 过程参数，都不该进交付物）
-        hay = txt + '\n' + (listing or '')
+        hay = txt + '\n' + ' '.join(names)
         for nm, _ in CONTRACT_SHEETS:
             rows = dump_sheet(a.xlsx, nm) or []
             hay += '\n' + '\n'.join('\t'.join(r) for r in rows)
@@ -277,7 +312,7 @@ def main():
         for x in v:
             say(f'    ✗ {x}')
         say('')
-        all_hard += [('格式契约', x, [], []) for x in v]
+        fmt_violations.extend(v)
 
     # ---- [4] xlsx 自己的「已用表 → 负载/目标列」是否与器件清单一致 ----
     # 这是 [1] 的同胞检查：交付物内部也可能自相矛盾（同一份 xlsx 里，
@@ -307,13 +342,17 @@ def main():
         open(a.out, 'w', encoding='utf-8').write(report + '\n')
         print(f'\n（报告已写入 {a.out}）')
 
+    if fmt_violations:
+        print(f'\n✗ 格式契约 {len(fmt_violations)} 处不符：交付物形态不符合 '
+              f'assets/output-contract.md（sheet 名单/列名/md 章节/禁用词），'
+              f'详见 [5]。', file=sys.stderr)
     if all_hard:
         print(f'\n★ 硬冲突 {len(all_hard)} 处：同一批交付物里对同一位号给了不同型号，'
               f'必须读完图定案。', file=sys.stderr)
     if all_soft:
         print(f'\n? 待核 {len(all_soft)} 处：用了清单里没有的位号 —— 补清单或改文本，'
               f'别让交付物内部不一致地交出去。', file=sys.stderr)
-    sys.exit(1 if (all_hard or all_soft) else 0)
+    sys.exit(1 if (all_hard or all_soft or fmt_violations) else 0)
 
 
 if __name__ == '__main__':
