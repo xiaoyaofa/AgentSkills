@@ -47,7 +47,10 @@ import subprocess
 import sys
 
 # 位号形状：U3 / Q10 / L7 / FB1 / Y2 / CON7 / JP1 / SW4 / D14 / LCM1 …
-REF = r'[UQD]\d{1,2}|J\d{1,2}|L\d{1,4}|FB\d|Y\d|LCM\d|CON\d|JP\d|SW\d|PWR\d|SA\d{1,2}|F\d{1,2}|RZ\d|S\d{1,2}'
+REF = (r'[UQD]\d{1,2}[A-Z]?|J\d{1,2}[A-Z]?|L\d{1,4}|FB\d|Y\d|LCM\d|CON\d|JP\d|SW\d|'
+       r'PWR\d|SA\d{1,2}|F\d{1,2}|RZ\d|S\d{1,2}|X\d{1,2}|E\d{1,2}')
+# ↑ 尾字母：`U5S` 这种写法（实测客户清单里就有）；`X`/`E`：晶振/天线位号（`X1`、`E8`）。
+#   ★ 加了 E/X 会连带把 BGA ball（`E19`、`E8`）也看成位号 —— 靠 nonrefs 集合排掉，见 main()。
 # 位号与型号之间的"绑定"分隔符：只允许空白与 = / :，显式排除 → -> | 等
 BIND = r'\s*(?:[=＝:：]\s*)?'
 # 型号后面"跟着的必须不是字母数字" —— 用这个而不是 \b：\b 要求两侧一个是词字符，
@@ -83,11 +86,25 @@ FORBIDDEN = ['判据A命中页', '判据B', 'Windows 通用性验证', '建议�
              'sha256', '--conn-page', '--page-re', '--audit']
 
 
+def run_dump(*args):
+    """调 `xlsx_dump.py` 子进程，返回 CompletedProcess。
+
+    ★ **必须显式 `encoding='utf-8'`** —— 子进程带 `-I`，而 `-I` 蕴含 `-E`：
+      它会**忽略 PYTHONUTF8 / PYTHONIOENCODING**，在中文 Windows 上按 GBK(cp936) 写 stdout；
+      父进程若按 UTF-8 解就会解码失败或读成乱码。实测后果是 **[1]/[4]/[5] 一项都跑不到** ——
+      看着像"检查没通过"，实际是"检查没执行"，交付前最后一道网**静默失效**。
+      配合 `xlsx_dump.py` 里的 `sys.stdout.reconfigure(encoding='utf-8')` 才是完整的修法
+      （父进程防崩、子进程保证内容真的是 UTF-8）。errors='replace' 是最后一道兜底。
+    """
+    dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
+    return subprocess.run([sys.executable, '-I', dump, *args],
+                          capture_output=True, text=True,
+                          encoding='utf-8', errors='replace')
+
+
 def dump_sheet(path, sheet):
     """按 sheet 名（或序号）取整张表，返回 [[列...], [列...]]"""
-    dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
-    r = subprocess.run([sys.executable, '-I', dump, path, '--sheet', str(sheet)],
-                       capture_output=True, text=True)
+    r = run_dump(path, '--sheet', str(sheet))
     if r.returncode != 0 or not r.stdout.strip():
         return None
     return [[c.strip() for c in l.split('\t')] for l in r.stdout.splitlines() if l.strip()]
@@ -95,9 +112,7 @@ def dump_sheet(path, sheet):
 
 def sheet_names_of(path):
     """xlsx 里的 sheet 名单（按顺序）。"""
-    dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
-    listing = subprocess.run([sys.executable, '-I', dump, path],
-                             capture_output=True, text=True).stdout
+    listing = run_dump(path).stdout
     return [re.sub(r'^\s*\d+\.\s*', '', l).split('  (')[0].strip()
             for l in listing.splitlines() if re.match(r'^\s*\d+\. ', l)]
 
@@ -138,8 +153,7 @@ def range_covered(ref, text):
 
 def load_xlsx_devices(path, sheet):
     dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
-    r = subprocess.run([sys.executable, '-I', dump, path, '--sheet', str(sheet)],
-                       capture_output=True, text=True)
+    r = run_dump(path, '--sheet', str(sheet))
     if r.returncode != 0 or not r.stdout.strip():
         sys.exit(f'读 xlsx 失败（--sheet {sheet} 对吗？）: {r.stderr.strip()[:200]}')
     model2refs, ref2model = {}, {}
@@ -182,13 +196,20 @@ def scan_bindings(text, model2refs, ref2model):
 
 def load_used_column(path, sheet, col):
     """取「1-底板已用信号」表的某一列（默认负载/目标列），拼成一段文本供 scan_bindings 扫。"""
-    dump = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'xlsx_dump.py')
-    r = subprocess.run([sys.executable, '-I', dump, path, '--sheet', str(sheet)],
-                       capture_output=True, text=True)
+    r = run_dump(path, '--sheet', str(sheet))
     if r.returncode != 0 or not r.stdout.strip():
         return None
     rows = [l.split('\t') for l in r.stdout.splitlines() if l.strip()][1:]
     return '\n'.join(x[col] for x in rows if len(x) > col)
+
+
+def load_column_set(path, sheet, col):
+    """取某 sheet 某列的非空取值集合（用来收集"引脚号"与"ball"两列）。"""
+    r = run_dump(path, '--sheet', str(sheet))
+    if r.returncode != 0 or not r.stdout.strip():
+        return set()
+    rows = [l.split('\t') for l in r.stdout.splitlines() if l.strip()][1:]
+    return {x[col].strip() for x in rows if len(x) > col and x[col].strip()}
 
 
 def main():
@@ -197,6 +218,11 @@ def main():
     ap.add_argument('--md', help='硬件资源分析.md')
     ap.add_argument('--sheet', default='4', help='器件清单所在 sheet（默认 4，也可以是名字）')
     ap.add_argument('--used-sheet', default='2', help='已用信号表所在 sheet（默认 2）')
+    ap.add_argument('--unused-sheet', default='3', help='未使用信号表所在 sheet（默认 3）')
+    ap.add_argument('--used-pin-col', type=int, default=2, help='已用表「核心板引脚」列')
+    ap.add_argument('--used-ball-col', type=int, default=3, help='已用表「SoC ball」列')
+    ap.add_argument('--unused-pin-col', type=int, default=0, help='未用表「核心板引脚」列')
+    ap.add_argument('--unused-ball-col', type=int, default=2, help='未用表「SoC ball」列')
     ap.add_argument('--load-col', type=int, default=8,
                     help='已用表里「负载/目标」列的下标（默认 8，与本 skill 的列定义一致）')
     ap.add_argument('--no-used-sheet', action='store_true',
@@ -266,10 +292,19 @@ def main():
     say('')
 
     # ---- [2] md 提到但清单没有的位号 ----
+    # ★ 先排掉"这本来就不是位号"的词：交付物自己写着哪些是核心板脚号、哪些是 SoC ball。
+    #   没有这一步时，`L2/L5/L25…`（L 系列引脚号）和 `E8/D4/F18`（ball）会被当成"漏收录的位号"
+    #   成片报出来 —— 实测 [2] 报了 31 条，**100% 是这种同名冲突**，检查等于没有信息量。
+    nonrefs = (load_column_set(a.xlsx, a.used_sheet, a.used_pin_col)
+               | load_column_set(a.xlsx, a.used_sheet, a.used_ball_col)
+               | load_column_set(a.xlsx, a.unused_sheet, a.unused_pin_col)
+               | load_column_set(a.xlsx, a.unused_sheet, a.unused_ball_col))
     in_md = {m.group(1) for m in re.finditer(rf'\b({REF})\b', txt)}
-    only_md = sorted(in_md - set(ref2model), key=lambda x: (re.sub(r'\d', '', x), len(x), x))
-    say(f'[2] md 提到、器件清单里没有的位号（{len(only_md)}）: {only_md or "无"}')
-    say('    （注意：D14/D4/D17 这类也可能是 ball 号，不一定是漏收录）')
+    only_md = sorted(in_md - set(ref2model) - nonrefs,
+                     key=lambda x: (re.sub(r'\d', '', x), len(x), x))
+    say(f'[2] md 提到、器件清单里没有的位号（{len(only_md)}）'
+        f'　[已排除 {len(nonrefs)} 个"其实是引脚号/ball 号"的词]')
+    say(f'    {only_md or "无"}')
     say('')
 
     # ---- [3] 清单里有但 md 没提 ----

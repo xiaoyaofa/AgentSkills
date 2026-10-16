@@ -21,7 +21,12 @@
         [--used-pin-col 2] [--used-sig-col 1] [--unused-pin-col 0] \\
         [--used-load-col 8] [--used-page-col 7] [--conn-page 3] [--window 8]
 
-输出: 各检查项计数 + 具体条目；退出码 0 = A/B/C/D 全过（E/F 只提示，不阻塞）。
+输出: 各检查项计数 + 具体条目；退出码 0 = A/B/C/D 全过（E/F/G/H 只提示，不阻塞）。
+
+  [H] 原理图上的 GPIO 备用功能标注 ↔「底板所需功能」列（弱判据）
+      —— 厂商爱在该网络旁用蓝色小字标"这只 SOM 脚当哪个 GPIO 用"（`MCU_GPIO0_3` 之类）。
+      这是**唯一一条从原理图侧自动查**的依据，专治"引出名与 Function0 同名、图上却当 GPIO 用"
+      （① 看不见、② 要有 dts 才看得见的那一类）。
 """
 
 import argparse
@@ -76,7 +81,11 @@ def main():
     ap.add_argument('--unused-sig-col', type=int, default=1)
     ap.add_argument('--conn-page', type=int, default=3)
     ap.add_argument('--window', type=int, default=8)
-    ap.add_argument('--skip', default='GND')
+    ap.add_argument('--skip', default='GND',
+                    help='按**精确名字**跳过的信号（逗号分隔）')
+    ap.add_argument('--power-rx', default=r'^(VDD|VSS|VCC|GND|VBAT)',
+                    help='电源/地脚正则（与 pin_usage.py 同款）：这类信号不参与 [B] 划分完整性判定。'
+                         '★ 不给这个，电源脚会被 [B] 报成"两张表都没收录"（实测 X 只）')
     ap.add_argument('--g-ignore', default='',
                     help='[G] 里已裁决为"网络名只是核心板印字、实际按 Function0 用"的引脚号，'
                          '逗号分隔（裁决理由要写进交付物的备注列）')
@@ -94,7 +103,13 @@ def main():
             continue
         if len(f) > 2 and f[0] and pin_rx.match(f[0]):
             pins[f[0]] = {'name': f[1], 'funcs': (f[3:13] + [''] * 10)[:10]}
-    skip = {s.strip().upper() for s in a.skip.split(',')}
+    skip = {s.strip().upper() for s in a.skip.split(',') if s.strip()}
+    power_rx = re.compile(a.power_rx, re.I)
+
+    def is_skipped(name):
+        """跳过"不该参与引脚划分统计"的信号：精确名 或 电源/地脚正则。"""
+        n = (name or '').strip()
+        return n.upper() in skip or bool(power_rx.match(n))
     used = [r for r in read_tsv(a.used) if len(r) > a.used_pin_col and r[a.used_pin_col]]
     unused = [r for r in read_tsv(a.unused) if len(r) > a.unused_pin_col and r[a.unused_pin_col]]
     used = [r for r in used if r[0] not in ('功能分类',)]
@@ -114,7 +129,7 @@ def main():
         return sorted({p for p, ls in pages.items()
                        if p != a.conn_page and any(rx.search(l) for l in ls)})
 
-    errA, errB, errC, errD, warnE, warnF, warnG = [], [], [], [], [], [], []
+    errA, errB, errC, errD, warnE, warnF, warnG, warnH = [], [], [], [], [], [], [], []
 
     # [A] 引脚 ↔ 信号名
     for r in used:
@@ -142,7 +157,7 @@ def main():
     ov = sorted(set(p1) & set(p2), key=lambda x: (len(x), x))
     miss = [k for k in pins
             if k not in set(p1) and k not in set(p2)
-            and pins[k]['name'].upper() not in skip]
+            and not is_skipped(pins[k]['name'])]
     for k in miss:
         errB.append(f'引脚 {k}（{pins[k]["name"]}）两张表都没收录')
 
@@ -152,7 +167,7 @@ def main():
         sig = r[a.unused_sig_col]
         for c in re.split(r'\s*/\s*', sig):
             c = c.strip()
-            if len(c) < 6 or c.upper() in skip:
+            if len(c) < 6 or is_skipped(c):
                 continue
             if re.search(r'(?<![A-Za-z0-9_])' + re.escape(c) + r'(?![A-Za-z0-9_])',
                          p4_12, re.I):
@@ -225,6 +240,42 @@ def main():
             warnG.append(f'{pin}: 网络名「{net}」对应 Function{idx}={p["funcs"][idx]}，'
                          f'但表里写「{tgt}」')
 
+    # [H] 原理图上的 GPIO 备用功能标注 ↔「底板所需功能」列（弱判据，从**原理图侧**自动查）
+    #   厂商画原理图时习惯在该网络旁用蓝色小字标出"这只 SOM 脚当哪个 GPIO 用"
+    #   （形如 `MCU_GPIO0_3`、`SoC_GPIO0_12`）。这是**唯一一条从原理图侧自动查**的依据：
+    #   ⚠ 依据① 靠"引出名 ≠ Function0"，同名就看不见；依据② 要有 dts。
+    #   实测它抓到了 ① ② 都看不见、只有逐页读图才能发现的一只（`MCU_SPI0_D0` 当 `MCU_GPIO0_3` 用）。
+    #   做法：从引脚表的 Function 列表建"GPIO 名 → 核心板脚"映射，拿图上出现的标注回查。
+    gpio2pin = {}
+    for pin, p in pins.items():
+        for fn in p['funcs']:
+            if fn and re.fullmatch(r'(MCU_)?GPIO\d+_\d+', fn, re.I):
+                gpio2pin.setdefault(fn.upper(), pin)
+                break
+    target_of = {r[a.used_pin_col]: r[a.used_target_col]
+                 for r in used if len(r) > a.used_target_col}
+    unused_pins = {r[a.unused_pin_col] for r in unused}
+    for name, pin in sorted(gpio2pin.items(), key=lambda kv: (len(kv[1]), kv[1])):
+        short = re.sub(r'^MCU_', '', name)
+        # ★ 前缀不能写成可选的 `(?:MCU_)?` —— 那样 `GPIO0_16` 会匹配到文本里的
+        #   `MCU_GPIO0_16`（**另一只脚**），实测凭空多报 7 只假警。边界里带上 `_`，
+        #   MCU_ 域的标注就不会被非 MCU 的脚认领。裸名另外允许 `SoC_` 前缀那种画法。
+        forms = [name] if name.startswith('MCU_') else [name, 'SoC_' + name]
+        rx = re.compile('|'.join(r'(?<![A-Za-z0-9_])' + re.escape(f) + r'(?![A-Za-z0-9_])'
+                                 for f in forms), re.I)
+        n_hit = len(rx.findall(other))
+        if not n_hit:
+            continue
+        cur = target_of.get(pin)
+        if cur is None:
+            if pin in unused_pins:
+                warnH.append(f'{pin}: 图上标了 {name}，但它在「2-未使用信号」里 —— 应该算已用')
+            continue
+        if short.upper() in cur.upper().replace('MCU_', ''):
+            continue                       # 表里已经写成这个 GPIO 了，一致
+        warnH.append(f'{pin}: 图上标了 {name}（出现 {n_hit} 次），'
+                     f'但「底板所需功能」写的是「{cur}」')
+
     # ---------- 汇总 ----------
     print(f'Sheet1(已用) {len(used)} 行 / Sheet2(未用) {len(unused)} 行 / '
           f'引脚表 {len(pins)} 只脚')
@@ -235,6 +286,7 @@ def main():
     print(f'  [E] 负载列存疑（弱判据）      : {len(warnE)}')
     print(f'  [F] 引出名落在别处/不在表里    : {len(warnF)}')
     print(f'  [G] 网络名↔所需功能 自相矛盾  : {len(warnG)}')
+    print(f'  [H] 图上 GPIO 标注↔所需功能   : {len(warnH)}')
     for tag, arr in (('A', errA), ('B', errB), ('C', errC), ('D', errD)):
         for x in arr:
             print(f'  [X{tag}] {x}')
@@ -258,6 +310,13 @@ def main():
         print('      两种可能：① 表里的"无需复用"是错的（该换 muxmode）—— **这是事故，必须改**；')
         print('                ② 网络名只是核心板印字、实际真按 Function0 用 —— 在备注里写明即可。')
         print('      另：板级 dts 的 pinctrl 是最硬的第三方依据，用 dts_pinmux_audit.py 对拍一遍。')
+    if warnH:
+        print(f'  ↑ [H] {len(warnH)} 只：原理图上标了 GPIO 备用功能，表里却没这么写 —— 逐条裁决。')
+        for x in warnH:
+            print(f'      {x}')
+        print('      两种可能：① 底板真的把它当 GPIO 用（**表写错了**，改成该 GPIO + muxmode 7）；')
+        print('                ② 那只是原图上的排版残留（在备注里写明）。')
+        print('      这一条专治"引出名与 Function0 同名、图上却当 GPIO 用"—— ① ② 都看不见的那类。')
 
     sys.exit(0 if not (errA or errB or errC or errD) else 1)
 

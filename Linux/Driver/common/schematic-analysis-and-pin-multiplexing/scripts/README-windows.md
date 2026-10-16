@@ -79,7 +79,17 @@ python %BIN%\check_deliverable_consistency.py ^
 > **★ 导出 xlsx 前，先拿骨架对齐形态**：`python %BIN%\xlsx_dump.py <skill>\assets\pinmap-template.xlsx`
 > —— 5 个 sheet 的名字、顺序、列名以它为准。**`assets\` 目录不在 = 你手上是旧版 skill 的副本，先拉最新的。**
 
-## 四、注意事项
+## 四、两个 Windows 专属坑（实测踩过）
+
+1. **父脚本 subprocess 调子脚本 → 编码必须两端都写**。
+   `subprocess.run([..., '-I', 'xlsx_dump.py', ...], text=True)` 不指定 `encoding` 时，
+   子进程带 `-I`（**蕴含 `-E`**）会忽略 `PYTHONUTF8`/`PYTHONIOENCODING`，在中文 Windows 上按 **GBK** 写 stdout，
+   父进程按 UTF-8 解 → 读成乱码或直接崩。**危害是"整项检查没跑到"，而退出码还是 1 —— 看着像没通过。**
+   现已两端都修（父 `encoding='utf-8'` / 子 `sys.stdout.reconfigure`）。自己写工具时照做。
+2. **表头不一定在第 2 行**。`xlsx_dump.py --check` 现在会直接打印"表头可能在**第 N 行**"并给出要用的
+   `--skip-rows` —— **照它给的数走，别照文档里的经验值**（实测有厂商表表头在第 3 行：第 1 行标题、第 2 行日期）。
+
+## 五、注意事项
 
 1. **编码**：脚本一律按 UTF-8 读写 TSV。Windows 上生成 TSV 时别用记事本另存成 GBK；用 `python ... > x.tsv` 重定向或 VS Code 指定 UTF-8 即可。脚本已兼容 CRLF 行尾。
 2. **通配符**：`cmd.exe` 不展开通配符，`--sch ...\text\*.compact.txt` 在 cmd 下可能不展开；改用 **Git Bash / PowerShell**，或直接把文件名写全。

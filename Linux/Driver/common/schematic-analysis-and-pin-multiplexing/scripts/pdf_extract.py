@@ -87,6 +87,28 @@ def main():
     print(f'文本 : {tdir}/{name}.compact.txt  ({compact.count(chr(10)) + 1} 行)')
     print(f'整图 : {pdir}/pg-*.png  @{a.dpi:g}dpi  ({n} 页)')
     print(f'切页锚点(合成页脚) : {len(foot)} 个（= 页数则切页正常）')
+
+    # ★ 退化页体检：**竖排/旋转标签**的页（连接器页最典型）在 PDFium 下会被拆成"一个字符一行"，
+    #   整页文字层等于不可用 —— 工具不会崩，但依赖该页的判据会**静默归零**。
+    #   实测某板连接器页 4021 行里 3852 行是单字符行，判据 B 从 poppler 的 39/189 掉到 0/189。
+    #   主动报出来，别让下游以为"判据 B 跑了只是没命中"。
+    degenerate = []
+    for i in range(n):
+        ls = [l.strip() for l in raw_pages[i].splitlines() if l.strip()]
+        if len(ls) >= 50:
+            single = sum(1 for l in ls if len(l) == 1)
+            if single / len(ls) > 0.5:
+                degenerate.append((i + 1, len(ls), single))
+    if degenerate:
+        print(f'★ 文字层退化页 {len(degenerate)} 个（竖排/旋转标签，PDFium 会逐字符换行）：')
+        for p, tot, s in degenerate[:6]:
+            print(f'    第 {p} 页：{tot} 行里 {s} 行是单字符（{s * 100 // tot}%）')
+        if len(degenerate) > 6:
+            print(f'    …… 另 {len(degenerate) - 6} 页')
+        print('  → 这些页的**文字层不可用**（依赖该页的判据，如判据 B，会归零）。')
+        print('     用 Read 读 pages/pg-NN.png 人工判读，或改用 pdf_schematic_extract.sh（poppler -layout）。')
+        print('     交付物里要写明"判据 B 无产出 —— 不是未使用，是文字层取不到"。')
+
     print('下一步建议: 用 Read 通读 <outdir>/pages/pg-NN.png（框图页最重要）。')
 
 

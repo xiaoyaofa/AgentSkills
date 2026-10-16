@@ -110,6 +110,16 @@ def to_matrix(cells):
 
 
 def main():
+    # ★ 强制 stdout/stderr 走 UTF-8：中文 Windows 下 Python 默认按 GBK(cp936) 写 stdout，
+    #   而调用方（如 check_deliverable_consistency.py）多半按 UTF-8 读 —— 于是 sheet 名/列名
+    #   读成乱码（[5] 假报"列名不符"），内容里有 GBK 编不出的字符（↔ → ≤）时直接崩。
+    #   被 `-I` 拉起时（`-I` 蕴含 `-E`）PYTHONIOENCODING 是无效的，只能这样在进程内改。
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding='utf-8')
+        except (AttributeError, ValueError):     # 被重定向成非文本流时忽略
+            pass
+
     ap = argparse.ArgumentParser()
     ap.add_argument('xlsx')
     ap.add_argument('--sheet', help='sheet 名或从 1 开始的序号')
@@ -123,14 +133,16 @@ def main():
 
     sheets = load(a.xlsx)
 
-    if not a.sheet and not a.all:
+    # ★ `--check` 不给 --sheet 时也要逐 sheet 体检 —— 否则只打印 sheet 清单，
+    #   用户按文档"先体检确认表头在第几行"跑了却看不到表头行号（实测就是这么混进一行表头的）。
+    if not a.sheet and not a.all and not a.check:
         print(f'# {os.path.basename(a.xlsx)} 共 {len(sheets)} 个 sheet')
         for i, s in enumerate(sheets, 1):
             m = to_matrix(s['cells'])
             print(f'  {i}. {s["name"]}  ({len(m)} 行 x {(len(m[0]) if m else 0)} 列)')
         return
 
-    todo = sheets if a.all else [
+    todo = sheets if (a.all or not a.sheet) else [
         s for i, s in enumerate(sheets, 1) if a.sheet in (str(i), s['name'])
     ]
     if not todo:
@@ -148,6 +160,11 @@ def main():
                         if sum(1 for k in r if r[k]) >= 3), 0)
             print(f'  表头可能在第 {hdr + 1} 行，列: '
                   f'{" ".join(letter(c) for c in sorted(s["cells"][hdr]))}')
+            # ★ 把要用的参数**算好写出来** —— 文档里"表头常在第 2 行"只是经验，实测有表头在
+            #   第 3 行的（第 1 行标题、第 2 行日期），照文档抄 --skip-rows 1 就会把表头混进数据。
+            print(f'  → 要**纯数据**用 `--skip-rows {hdr + 1}`；'
+                  f'要**连表头一起保留**（下游脚本会自动跳表头行）用 `--skip-rows {hdr}`'
+                  if hdr else '  → 该 sheet 首行即表头/数据，无需 --skip-rows')
             mode = dist.most_common(1)[0][0] if dist else 0
             if len(dist) > 1:
                 odd = [i + 1 for i, c in enumerate(w) if c != mode]
