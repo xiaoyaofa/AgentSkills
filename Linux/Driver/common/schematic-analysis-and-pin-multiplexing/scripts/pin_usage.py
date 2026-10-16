@@ -23,6 +23,31 @@
   --conn-page 连接器页页码（默认 3，多数原理图把连接器放在第 3 页）
 """
 
+# ---------------------------------------------------------------------------
+# ★ 强制 UTF-8 输出（Windows 中文环境必需）
+#   Windows 中文环境默认编码是 GBK(cp936)：脚本里只要有箭头/数学符号（`↔` `→` `≤`）就会
+#   UnicodeEncodeError 直接崩 —— **而且是跑到打印那一步才崩，前面算完的结果一条都出不来**，
+#   看着像"检查没通过"，实际是"检查没执行"。实测：`check_deliverable_consistency.py` 崩在
+#   `print(report)`、`verify_pinmap.py` 崩在打印 `[A] 引脚↔信号名` 那行。
+#   ★ 被 `-I` 拉起时（`-I` 蕴含 `-E`）PYTHONIOENCODING / PYTHONUTF8 都无效，只能在进程内改。
+#   ★ **不要**改成 import 一个共享小模块：`-I` 蕴含 `-P`，脚本目录不进 sys.path，只会静默失效；
+#     所以这段在每个脚本里内联一份（自带 import，放在 docstring 之后、其余 import 之前也能跑）。
+# ---------------------------------------------------------------------------
+import sys as _sys
+
+for _s in (_sys.stdout, _sys.stderr):
+    try:
+        _s.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):        # 被重定向成非文本流时忽略
+        pass
+if _sys.platform == 'win32':
+    try:                                        # 控制台代码页也切到 UTF-8，原生 cmd 窗口才不会显示成乱码
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+    except Exception:
+        pass
+
+
 import argparse
 import re
 import sys

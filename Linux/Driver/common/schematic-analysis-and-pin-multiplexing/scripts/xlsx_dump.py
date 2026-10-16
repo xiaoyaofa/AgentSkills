@@ -26,6 +26,31 @@
      或用表头名反查列号，不要硬编码列索引。
 """
 
+# ---------------------------------------------------------------------------
+# ★ 强制 UTF-8 输出（Windows 中文环境必需）
+#   Windows 中文环境默认编码是 GBK(cp936)：脚本里只要有箭头/数学符号（`↔` `→` `≤`）就会
+#   UnicodeEncodeError 直接崩 —— **而且是跑到打印那一步才崩，前面算完的结果一条都出不来**，
+#   看着像"检查没通过"，实际是"检查没执行"。实测：`check_deliverable_consistency.py` 崩在
+#   `print(report)`、`verify_pinmap.py` 崩在打印 `[A] 引脚↔信号名` 那行。
+#   ★ 被 `-I` 拉起时（`-I` 蕴含 `-E`）PYTHONIOENCODING / PYTHONUTF8 都无效，只能在进程内改。
+#   ★ **不要**改成 import 一个共享小模块：`-I` 蕴含 `-P`，脚本目录不进 sys.path，只会静默失效；
+#     所以这段在每个脚本里内联一份（自带 import，放在 docstring 之后、其余 import 之前也能跑）。
+# ---------------------------------------------------------------------------
+import sys as _sys
+
+for _s in (_sys.stdout, _sys.stderr):
+    try:
+        _s.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):        # 被重定向成非文本流时忽略
+        pass
+if _sys.platform == 'win32':
+    try:                                        # 控制台代码页也切到 UTF-8，原生 cmd 窗口才不会显示成乱码
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+    except Exception:
+        pass
+
+
 import argparse
 import os
 import re
@@ -102,11 +127,22 @@ def load(path):
     return out
 
 
+def clean(v):
+    """单元格内的换行/制表符要拍平。
+
+    ★ 厂商表里**单元格内换行**很常见（实测某引脚表标题行的最后一个单元格是
+      `'Ver：1.0\\n2023.7.31'`）。直接导成 TSV 会在**中间多出一行**：看起来像"表头在第 3 行、
+      第 2 行是日期"，其实是同一个单元格里的两行 —— 实测把读表的人（和另一个 agent）都骗了，
+      还据此改了 `--skip-rows`，结果把表头混进了数据。拍平成空格才是对的（TSV 里不能有裸换行）。
+    """
+    return re.sub(r'[\r\n\t]+', ' ', str(v)).strip()
+
+
 def to_matrix(cells):
     if not cells:
         return []
     width = max((max(r) + 1) for r in cells if r) if any(cells) else 0
-    return [[r.get(i, '') for i in range(width)] for r in cells]
+    return [[clean(r.get(i, '')) for i in range(width)] for r in cells]
 
 
 def main():
@@ -158,6 +194,14 @@ def main():
             print(f'  每行写出的单元格个数分布: {dict(sorted(dist.items()))}')
             hdr = next((i for i, r in enumerate(s['cells'])
                         if sum(1 for k in r if r[k]) >= 3), 0)
+            # ★ 把前几行的画像摆出来：厂商表第 1 行常是"标题+版本+日期"挤在一个单元格里
+            #   （含换行），只看导出的 TSV 会以为它是两三行、据此把 --skip-rows 算错。
+            print('  前 3 行画像（单元格内的换行已拍平）:')
+            for i in range(min(3, len(s['cells']))):
+                nn = [k for k in sorted(s['cells'][i]) if s['cells'][i][k]]
+                first = clean(s['cells'][i][nn[0]]) if nn else ''
+                print(f'    行 {i + 1}: 非空 {len(nn)} 格 | 首值 {first[:44]!r}'
+                      + ('   ← 疑似表头' if i == hdr else ''))
             print(f'  表头可能在第 {hdr + 1} 行，列: '
                   f'{" ".join(letter(c) for c in sorted(s["cells"][hdr]))}')
             # ★ 把要用的参数**算好写出来** —— 文档里"表头常在第 2 行"只是经验，实测有表头在
@@ -174,8 +218,8 @@ def main():
                       '不要按出现顺序数，也不要硬编码尾部列索引。')
             else:
                 print('  ✓ 每行写出的单元格数一致，列位置稳定。')
-            print('  首行内容: ' + ' | '.join(
-                f'{letter(k)}={v}' for k, v in sorted(s['cells'][hdr].items()))[:200])
+            print('  表头行内容: ' + ' | '.join(
+                f'{letter(k)}={clean(v)}' for k, v in sorted(s['cells'][hdr].items()))[:200])
             continue
 
         mat = mat[a.skip_rows:]
