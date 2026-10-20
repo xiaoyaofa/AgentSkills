@@ -112,7 +112,7 @@ def main():
                     help='电源/地脚正则（与 pin_usage.py 同款）：这类信号不参与 [B] 划分完整性判定。'
                          '★ 不给这个，电源脚会被 [B] 报成"两张表都没收录"（实测 X 只）')
     ap.add_argument('--g-ignore', default='',
-                    help='[G] 里已裁决为"网络名只是核心板印字、实际按 Function0 用"的引脚号，'
+                    help='[G]/[I] 里已裁决为"网络名只是核心板印字、实际按 Function0 用"的引脚号，'
                          '逗号分隔（裁决理由要写进交付物的备注列）')
     ap.add_argument('--page-re', default=r'Sheet:?\s*(\d+)\s+of\s+(\d+)',
                     help='页脚正则（默认兼容带/不带冒号）')
@@ -154,7 +154,7 @@ def main():
         return sorted({p for p, ls in pages.items()
                        if p != a.conn_page and any(rx.search(l) for l in ls)})
 
-    errA, errB, errC, errD, warnE, warnF, warnG, warnH = [], [], [], [], [], [], [], []
+    errA, errB, errC, errD, warnE, warnF, warnG, warnH, warnI = [], [], [], [], [], [], [], [], []
 
     # [A] 引脚 ↔ 信号名
     for r in used:
@@ -301,6 +301,53 @@ def main():
         warnH.append(f'{pin}: 图上标了 {name}（出现 {n_hit} 次），'
                      f'但「底板所需功能」写的是「{cur}」')
 
+    # [I] 备用功能名与自有网络名「同页共现」（弱判据）—— **没有 dts 时的主要补偿**
+    #   为什么需要它：有一整类复用，判据①看不见（引出名 = Function0），又没有任何 GPIO 标注，
+    #   只能靠依据②（dts）发现。实测一块板「UART0_RTSn/CTSn → I2C3_SDA/SCL (mux 2)」就属于这类 ——
+    #   一轮"手边没 dts 就跳过依据②"的运行里，这两只被整只漏掉，而它们不通会导致 RTC/USB-C CC 全挂。
+    #   原理图上的线索是：**这只脚自己的网络名，和它某个"备用功能"的名字，出现在同一页上**
+    #   （双标签 / 0R 交叉跳线画在一起）。这条给了「无 dts」时一个可自动化的抓手。
+    #   ★ 仍是弱判据：可能是核心板印字（如 SoC_UART1_DCDn 与 I2C0 同页），要人工裁决。
+    page_tokens = {}
+    for _p, _ls in pages.items():
+        if _p == a.conn_page:
+            continue
+        toks = set()
+        for _l in _ls:
+            toks.update(t.upper() for t in re.findall(r'[A-Za-z0-9_]+', _l))
+        page_tokens[_p] = toks
+
+    def name_pages(nm):
+        """该名字（可以带/不带 SoC_ 前缀）出现在哪些页上。"""
+        up = nm.upper()
+        forms = (up, 'SOC_' + up)
+        return {p for p, toks in page_tokens.items() if toks.intersection(forms)}
+
+    for r in used:
+        pin = r[a.used_pin_col]
+        if pin in g_ignore or len(r) <= a.used_target_col:
+            continue
+        cur = r[a.used_target_col]
+        if not ('Function0' in cur or '无需复用' in cur):
+            continue                        # 表里已经写成别的功能了，不用查
+        p = pins.get(pin)
+        if not p or not p['funcs'][0]:
+            continue
+        own_name = re.sub(r'^(SOC_|SoC_)', '', r[a.used_sig_col].split('/')[0])
+        own_pages = name_pages(own_name)
+        if not own_pages:
+            continue
+        for i, fn in enumerate(p['funcs']):
+            if i == 0 or not fn or fn.upper() == p['funcs'][0].upper():
+                continue
+            if fn.upper() in cur.upper():
+                continue            # 表里已经写明这个备用功能了（如"Function0；装屏时 → EHRPWM0_B"），不算漏
+            hit = name_pages(fn) & own_pages
+            if hit:
+                warnI.append(f'{pin}: 自有网络「{r[a.used_sig_col]}」与备用功能 {fn} '
+                             f'同在第 {sorted(hit)} 页 —— 底板可能用的是 {fn}，而表里写「{cur}」')
+                break
+
     # ---------- 汇总 ----------
     print(f'Sheet1(已用) {len(used)} 行 / Sheet2(未用) {len(unused)} 行 / '
           f'引脚表 {len(pins)} 只脚')
@@ -312,6 +359,7 @@ def main():
     print(f'  [F] 引出名落在别处/不在表里    : {len(warnF)}')
     print(f'  [G] 网络名↔所需功能 自相矛盾  : {len(warnG)}')
     print(f'  [H] 图上 GPIO 标注↔所需功能   : {len(warnH)}')
+    print(f'  [I] 备用功能与自有网络同页共现: {len(warnI)}')
     for tag, arr in (('A', errA), ('B', errB), ('C', errC), ('D', errD)):
         for x in arr:
             print(f'  [X{tag}] {x}')
@@ -342,6 +390,15 @@ def main():
         print('      两种可能：① 底板真的把它当 GPIO 用（**表写错了**，改成该 GPIO + muxmode 7）；')
         print('                ② 那只是原图上的排版残留（在备注里写明）。')
         print('      这一条专治"引出名与 Function0 同名、图上却当 GPIO 用"—— ① ② 都看不见的那类。')
+    if warnI:
+        print(f'  ↑ [I] {len(warnI)} 只：备用功能名与这只脚自己的网络名出现在同一页 —— 逐条裁决。')
+        for x in warnI:
+            print(f'      {x}')
+        print('      同页共现通常是「双标签 / 0R 交叉跳线」的画法，**多半是真的换了功能**。')
+        print('      两种裁决：① 确实换了 → 改成该功能 + muxmode（**这类漏掉会让总线整体不通**）；')
+        print('                ② 只是核心板印字（如 SoC_UART1_DCDn 与 I2C0 同页）→ 备注写明 + --g-ignore。')
+        print('      ★ 没有 dts 时，这一条是"同名却真复用"那一类唯一能自动发现的抓手；'
+              '但它也抓不全（例：USB0_DRVVBUS 当 GPIO 用，图上根本没有该 GPIO 名）→ 仍需读图。')
 
     sys.exit(0 if not (errA or errB or errC or errD) else 1)
 
