@@ -2,6 +2,33 @@
 
 本文件记录仓库结构变更与各技能版本。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.1.0] - 2026-10-20
+
+`schematic-analysis-and-pin-multiplexing` 升级到 `1.1.0`（其余 4 个技能未变）。
+
+### Added
+
+- **Windows 兼容路线**：`pdf_extract.py`（走 pypdfium2，纯 pip，无需 poppler）与
+  `table_to_xlsx_openpyxl.py`，配套 `scripts/README-windows.md`
+- **交付物格式契约与模板**：`assets/output-contract.md`、`assets/report-template.md`、
+  `assets/pinmap-template.xlsx`（5 个 sheet 的骨架），把「产物形态」纳入机器校验
+- `check_deliverable_consistency.py`：交付物内部一致性复查（md ↔ xlsx）
+- `dts_pinmux_audit.py`：拿板级 dts 的 pinctrl 反查「哪些脚真被换了功能」
+
+### Changed
+
+- 查漏依据从 1 条扩到 4 条：引脚表自洽反查 / 板级 dts 对拍 / 原理图侧自动查 / 读图
+- 交付前复查从 `[A]~[F]` 扩到 `[A]~[I]`
+- 10 个脚本统一强制 UTF-8 输出（中文 Windows 兼容）
+
+### Fixed
+
+- 中文 Windows 上子进程编码导致的阻塞
+- `--audit` 存在盲区，权威判据改为 `muxmode != 0`
+- 切页不再相信页脚里印的页码，改为机器核对
+- 「未判定」被默认写成「无需复用」
+- `table_to_xlsx.py` 转换后残留中间 `.fods`，污染输出目录
+
 ## [1.0.0] - 2026-10-13
 
 仓库格式规范化，5 个技能版本统一升级为 `1.0.0`。

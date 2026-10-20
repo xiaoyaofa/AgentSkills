@@ -7,7 +7,7 @@
 
 | 技能                                                                                                       | 分类         | 平台         | 说明                                                |
 | ---------------------------------------------------------------------------------------------------------- | ------------ | ------------ | --------------------------------------------------- |
-| [`schematic-analysis-and-pin-multiplexing`](Linux/Driver/common/schematic-analysis-and-pin-multiplexing/) | Linux/Driver | common       | 原理图 PDF + 引脚表 → 硬件资源分析／引脚映射表     |
+| [`schematic-analysis-and-pin-multiplexing`](Linux/Driver/common/schematic-analysis-and-pin-multiplexing/) | Linux/Driver | common       | 原理图 PDF + 引脚表 → 硬件资源分析／引脚映射表（含 Windows 路线、交付物模板、dts 审计与一致性校验） |
 | [`c7z020-driver-dev`](Linux/Driver/kehu/c7z010_20/tebiandiangong/c7z020-driver-dev/)                      | Linux/Driver | c7z010_20    | MYD-C7Z020 PetaLinux 内核驱动开发 |
 | [`qt-eglfs-mirror`](Linux/System/am625X/sdk11/qt-eglfs-mirror/)                                           | Linux/System | am625X/sdk11 | AM62x Qt eglfs 双屏同显                             |
 | [`mem-stress`](Linux/System/common/mem-stress/)                                                           | Linux/System | common       | 内存／CPU 压测 + 温度监控                           |
@@ -98,8 +98,11 @@ Linux/System/common/mem-stress/
 ├── SKILL.md                    ← 技能入口，模型读这个
 ├── .claude-plugin/plugin.json  ← 插件清单
 ├── scripts/                    ← 可执行脚本
-└── assets/                     ← 随插件分发的预编译产物
+└── assets/                     ← 交付物模板/契约文档、预编译产物等静态资源
 ```
+
+> `scripts/` 与 `assets/` **按需存在**，不是每个技能都有：`mem-stress` 只有 `scripts/`，
+> `stm32mp257-overlayfs` 两者都没有。
 
 ## 关于 `assets/libqeglfs-myclone-integration.so`
 
