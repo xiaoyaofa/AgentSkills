@@ -1,0 +1,5 @@
+id	区域	x	y	宽	高	样式	标题	副标题	端口	位号	页码	备注
+SOC	ZS	60	120	460	620	core	SoC	MCU/SoC 型号	IF:R:80;CTRL:R:200;PWR:R:320	U1	1	左侧 SoC/MCU
+DEV	ZW	740	120	460	620	peripheral	U2 器件	型号 / 说明	IF:L:80;CTRL:L:200;PWR:L:320	U2	2	右侧器件/连接器
+PWR	ZP	1300	140	240	100	regulator	VDD_IO	LDO / FB	OUT:L:50%	—	1	电源/时钟/天线侧块
+NOTE	ZN	60	840	700	120	note	说明	串联 0R / 上拉 / DNP / NC|引脚号写在边标签，不塞长句		—	1	深色底衬说明块

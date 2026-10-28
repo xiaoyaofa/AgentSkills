@@ -11,6 +11,7 @@
 | PDF 双层提取 | `pdf_schematic_extract.sh`（poppler） | **`pdf_extract.py`**（pypdfium2） |
 | xlsx 导出 | `table_to_xlsx.py`（FODS + LibreOffice） | **`table_to_xlsx_openpyxl.py`**（openpyxl） |
 | 其余脚本 | `xlsx_dump.py`、`pin_usage.py`、`pin_mux_table.py`、`dts_pinmux_audit.py`、`verify_pinmap.py`、`check_deliverable_consistency.py`、`img_crop.py` | 同一份，跨平台通用（纯标准库） |
+| 模式 B（仅原理图） | `sch_page_split.py`、`control_map_svg.py`、`check_schematic_report.py` | 同一份，纯标准库；PDF 提取仍走 `pdf_extract.py` |
 
 **两条 PDF 路线不等价，别当成同一个东西**：
 
@@ -78,6 +79,48 @@ python %BIN%\check_deliverable_consistency.py ^
 
 > **★ 导出 xlsx 前，先拿骨架对齐形态**：`python %BIN%\xlsx_dump.py <skill>\assets\pinmap-template.xlsx`
 > —— 5 个 sheet 的名字、顺序、列名以它为准。**`assets\` 目录不在 = 你手上是旧版 skill 的副本，先拉最新的。**
+
+## 三·B、模式 B（仅原理图分析）在 Windows 上
+
+模式 B 的三个脚本（`sch_page_split.py` / `control_map_svg.py` / `check_schematic_report.py`）
+**纯标准库**，不需要 poppler、LibreOffice 或 openpyxl；PDF 提取照样走 `pdf_extract.py`。
+
+```bat
+:: ① 提取（pypdfium2）
+python %BIN%\pdf_extract.py 原理图.pdf %OUT%\sch 160
+
+:: ② 按物理页切分（页脚没有页码也能用）
+python %BIN%\sch_page_split.py %OUT%\sch\text\原理图.txt --out %OUT%\sch\text
+
+:: ③ 读图 → 照 assets\*-template.tsv 的表头建三张 TSV
+::    devices.tsv / control-map.tsv / power-tree.tsv
+
+:: ④ 生成功能块框图 + 回填 md 三张表（推荐 --style block）
+python %BIN%\control_map_svg.py --style block ^
+       --map %OUT%\板名-过程记录\control-map.tsv ^
+       --power %OUT%\板名-过程记录\power-tree.tsv ^
+       --devices %OUT%\板名-过程记录\devices.tsv ^
+       --layout %OUT%\板名-过程记录\layout.tsv ^
+       --zones %OUT%\板名-过程记录\zones.tsv ^
+       --edges %OUT%\板名-过程记录\edges.tsv ^
+       --svg %OUT%\板名-控制关系图.svg --md %OUT%\板名-原理图分析.md ^
+       --title "板名 系统框图" --source "原理图.pdf"
+
+:: ⑤ 校验（[S1]~[S8]）
+python %BIN%\check_schematic_report.py ^
+       --md %OUT%\板名-原理图分析.md --svg %OUT%\板名-控制关系图.svg ^
+       --map %OUT%\板名-过程记录\control-map.tsv ^
+       --power %OUT%\板名-过程记录\power-tree.tsv ^
+       --devices %OUT%\板名-过程记录\devices.tsv ^
+       --layout %OUT%\板名-过程记录\layout.tsv ^
+       --zones %OUT%\板名-过程记录\zones.tsv ^
+       --edges %OUT%\板名-过程记录\edges.tsv
+```
+
+> 模式 B 的 md 模板是 `assets\schematic-only-report-template.md`，契约是
+> `assets\schematic-only-output-contract.md`；**不要拿模式 A 的模板/契约套**。
+> `sch_page_split.py` 直接按 `.txt` 里的换页符 `\f` 切页，不依赖页脚，
+> 所以 PDFium 路线（页脚页码取不到）也能正常分页。
 
 ## 四、两个 Windows 专属坑（实测踩过）
 

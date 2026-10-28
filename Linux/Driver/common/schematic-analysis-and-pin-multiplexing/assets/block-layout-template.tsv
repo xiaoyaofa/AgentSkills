@@ -1,0 +1,9 @@
+id	区域	x	y	宽	高	样式	标题	副标题	端口	位号	页码	备注
+J1	Z1	60	170	220	220	peripheral	J1 连接器	型号 / 说明	VBUS:R:80;CC1/CC2:R:120	J1	1	外围块：白底细灰边
+U1	Z1	330	170	220	190	core	U1 核心芯片	型号 / 说明	IN:L:80;OUT:R:80;I2C:B:60	U1	1	核心芯片：统一蓝色
+F1	Z1	280	90	90	50	peripheral	F1	3A/6V	IN:L:45;OUT:R:45	F1	1	小外围块，端口放上下/左右
+Q1	Z2	590	90	140	80	peripheral	Q1	P-MOS / 说明	IN:L:40;OUT:R:40;G:B:70	Q1	2
+U2	Z3	1220	150	240	160	core	U2 稳压	型号 / 说明	IN:L:80;OUT:R:80;EN:B:80	U2	2
+RAIL1	Z3	1500	210	auto	auto	rail	5Vbat		IN:L:50%;OUT:B:50%	—	2	电源网络标签：宽高=auto，按文字收缩
+SOC1	Z1	340	370	auto	auto	soc	SoC → I2C4	0x22	OUT:T:50%	—	1	SoC 接口：统一紫色，宽高=auto，按左→右写
+CTRL1	Z4	60	965	260	50	peripheral	控制/状态块	GPIO / INT	IN:L:50%	—	1	控制区示例：没有成员块的分区会被省略

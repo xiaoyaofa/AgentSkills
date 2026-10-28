@@ -1,22 +1,22 @@
 ---
 name: schematic-analysis-and-pin-multiplexing
-description: 从客户底板原理图 PDF + 厂商核心板引脚表（xlsx）出发，产出《硬件资源分析.md》与《引脚映射表.xlsx》的完整方法与工具链。覆盖：原理图 PDF 双层提取（pdftotext 文字层 + 300dpi 局部裁图，Windows 另有 pypdfium2 纯 pip 路线）、xlsx 免依赖解析（空单元格省略／表头不在首行／尾部列串位等坑）、「底板到底用了哪些核心板信号」的双判据对撞、ball↔GPIO↔muxmode 反查、★ 查漏四个依据（引脚表自洽反查 / 板级 dts 的 pinctrl 对拍〔有条件，手边没 dts 就跳过，别去翻找〕/ 原理图侧自动查〔GPIO 蓝字标注 + 备用功能名与自有网络同页共现〕/ 读图 —— 任一条单独用都会漏）、交付物格式契约与骨架文件（5 个 sheet 的 xlsx 骨架 + md 模板，防产物形态漂移）、交付前两份复查（引脚表↔原理图 [A]~[I] ＋ 交付物内部一致性 md↔xlsx）。★ 需多模态视觉：拓扑判读（总线方向／门电路类型／DNP 归属／器件归属）只能读图，纯文本模型须走文中「模型能力要求」一节的降级路径。
+description: 两种用法。模式A：原理图 PDF + 厂商引脚表 → 《硬件资源分析.md》+《引脚映射表.xlsx》，含用/未用判定、ball/GPIO/muxmode 反查与查漏、交付物格式契约与校验。模式B：只有原理图 → 《原理图分析.md》+《控制关系图.svg》，用功能块框图（核心芯片统一突出、分区容器、端口、正交连线、网络标签、图例、标题栏）画清控制源、器件、开关、目标及电源树，TSV 驱动生成、可机器校验。支持 Linux poppler 与 Windows pypdfium2 两条提取路线，拓扑判读需要多模态视觉。
 license: MIT
 metadata:
   category: Linux/Driver
   platform: common
-  soc: AM62x
-  board: MYC-YM62X（首次验证）
+  soc: 任意（模式 A 首次验证 AM62x）
+  board: 模式 A = MYC-YM62X；模式 B = 2 页 Altium 充电器板
   vendor: MYIR
 ---
 # 原理图分析与引脚复用（Schematic Analysis and Pin Multiplexing）
 
-- **脚本**: 见 [`scripts/`](scripts/) —— 10 个，核心逻辑只用 Python 标准库；只有裁图、PDF 渲染、xlsx 导出用到第三方包（见下）
+- **脚本**: 见 [`scripts/`](scripts/) —— 14 个，核心逻辑只用 Python 标准库；只有裁图、PDF 渲染、xlsx 导出用到第三方包（见下）
 - **依赖**: 两条路线按平台二选一（详见「平台 → 用哪个入口」）
   - Linux/macOS：`poppler-utils`(pdftotext/pdftoppm/pdfinfo)、`Pillow`(裁图)、`LibreOffice`(出 xlsx)
   - Windows/无系统包：`pip install pypdfium2 pillow openpyxl`
-- **适用**: 任意 SoC/厂商 —— 只要手里有"① 底板原理图 PDF ② 厂商核心板引脚复用表(xlsx/表格)"
-- **首次验证平台**: MYIR MYC-YM62X（AM62x，ALW/BGA425）
+- **适用**: 任意 SoC/厂商。模式 A 需要"① 底板原理图 PDF ② 厂商核心板引脚复用表(xlsx/表格)"；模式 B 只需要①
+- **首次验证平台**: 模式 A = MYIR MYC-YM62X（AM62x，ALW/BGA425）；模式 B = 2 页 Altium 充电器板（Type-C PD + 电池 + 电源路径开关）
 
 ## 用途
 
@@ -26,7 +26,18 @@ metadata:
 2. **核心板的每只脚，底板到底接没接？接去了哪？**（决定要不要裁剪现有设备树）
 3. **每只被用到的脚，SoC 上原本是什么功能、底板要把它复用成什么功能（mux mode 是几）？**（决定 pinctrl 怎么写）
 
-这份 skill 就是把这三件事做成可复现的流程，产出两份交付物：**《硬件资源分析.md》**（叙述）+ **《引脚映射表.xlsx》**（表格）。
+模式 A 把这三件事做成可复现的流程，产出两份交付物：**《硬件资源分析.md》**（叙述）+ **《引脚映射表.xlsx》**（表格）。
+
+## 先分流：模式 A（引脚复用） vs 模式 B（仅原理图）
+
+| 你手上的输入 / 用户的要求 | 走哪条 |
+|---|---|
+| 原理图 PDF **+ 厂商核心板引脚表 xlsx**；要判断哪些核心板脚被用了、muxmode 是几 | **模式 A：引脚复用分析** —— 本文以下全部内容 |
+| **只有原理图 PDF**；或明确说「不做引脚复用 / 只分析原理图 / 给软件看控制关系」 | **模式 B：仅原理图分析** —— 见 [`references/schematic-only.md`](references/schematic-only.md) |
+
+模式 A 产出《硬件资源分析.md》+《引脚映射表.xlsx》；模式 B 产出《原理图分析.md》+《控制关系图.svg》。
+两套流程的脚本、交付物契约、检查项互相独立：模式 A 的 `[A]~[I]` 不适用于模式 B，
+模式 B 的 `[S1]~[S8]` 也不适用于模式 A。**别把两条路的产物混在一起交。**
 
 ## 工具清单
 
@@ -43,6 +54,9 @@ metadata:
 | `scripts/table_to_xlsx_openpyxl.py`                                                           | 同上，**纯 pip 路线**（openpyxl 直写，免 LibreOffice）                                                   |
 | `scripts/verify_pinmap.py`                                                                    | 交付前交叉复查 `[A]~[G]`（引脚表 ↔ 原理图 ↔ 已用/未用两表）                                                |
 | `scripts/check_deliverable_consistency.py`                                                    | 交付物**内部**一致性复查（位号↔型号）＋ **格式契约**校验（`[5]`）                               |
+| `scripts/sch_page_split.py`                                                                   | **模式 B**：按**物理页**切文字层（页脚无页码也能用），产 `pg-NN.txt` + `page_index.tsv`             |
+| `scripts/control_map_svg.py`                                                                  | **模式 B**：TSV → SVG + md 三张表；`--style block` 用 layout/zones/edges 画功能块框图（推荐），同一生成器可出 SoC↔器件的接口详图；`--check` 可复验字节一致 |
+| `scripts/check_schematic_report.py`                                                           | **模式 B**：交付物校验 `[S1]~[S8]`（S8 = 框图布局/连线完整性）；`--selftest` 用已知有错的样本回归          |
 | `assets/output-contract.md` / `assets/report-template.md` / `assets/pinmap-template.xlsx` | **产物形态契约 + md 骨架模板 + xlsx 骨架** —— 产出前先看，见「交付物格式契约」                         |
 
 ### 平台 → 用哪个入口（★ 两条路不等价，按平台挑一个，别混用）
@@ -103,6 +117,10 @@ pip install pypdfium2 pillow openpyxl
 
 原则一句话：**"看图才能定的事情，标成待人工确认，不要硬猜"。**
 
+> 模式 B（仅原理图分析）同样适用：控制极性、P/N 沟道、0R/DNP、器件归属都只能读图。
+> 纯文本模型可以照跑 `[S1]~[S8]` 的文本/结构检查，但所有未经读图确认的行必须写
+> `待确认 Qn`，并在 md 的「待确认问题」章节闭环 —— 检查器会查。
+
 1. 流程照跑 ①–⑤，`verify_pinmap.py` 照跑 —— 引脚/ball/muxmode 反查、用/不用统计、`--audit` 查漏**全都不受影响**；
 2. 把所有 `confidence = 仅B` 的条目、`verify_pinmap` 的 `[E]` 项、"总线方向/门电路类型/DNP 归属"这类**只列现象、不给结论**，汇总成一张《需人工看图确认》清单交给客户/硬件工程师（一次真实项目这类条目约 8 组，人看图十来分钟能判完）；
 3. 交付文档里必须写明**哪些结论是文本层推导、哪些经过图像确认**，不要让下一手误以为全都核过。
@@ -114,6 +132,10 @@ pip install pypdfium2 pillow openpyxl
 - 判断模型是否胜任的土办法：拿一张 300dpi 的裁图问它"这个电阻的阻值/位号是多少、它贴在哪个网络上"，答案能对得上再往下走。
 
 ## 交付物格式契约（★ 动手前先看）
+
+> 本节是**模式 A** 的契约。模式 B 的契约是另一份：
+> [`assets/schematic-only-output-contract.md`](assets/schematic-only-output-contract.md)
+> （文件名 / 三张 TSV 列 / md 章节 / SVG 约束 / `[S1]~[S8]`）。两条路的产物不要混用契约。
 
 **脚本管"算什么"，契约管"产出长什么样"。** 没有契约时，换个板子 / 换个会话，产物形态就会漂 —— 实测漂过：xlsx 从 5 个 sheet 变 6 个、**少了「器件清单」和「待确认问题」**、已用表**少了 `引脚原名 (Function0)` 与 `底板所需功能 (muxmode)` 两列**（BSP 最要用的两列），还混进了工具内部字段（`置信度`/`判据A命中页`）和 skill 自身的验证结论（"Windows 通用性验证""建议反馈到 Skill"）。
 
@@ -127,6 +149,8 @@ pip install pypdfium2 pillow openpyxl
 **★ 先做这个检查：`assets/` 目录和上面的骨架文件在不在？**
 不在 = **你手上是旧版 skill 的副本**，产物形态一定会漂（实测过一次：另一个会话拿着旧副本跑，
 产出的 xlsx 是 3 个 sheet、已用表 11 列，多出来的全是契约明令禁止进交付物的工具字段）。
+模式 B 还要确认 `assets/schematic-only-output-contract.md`、
+`assets/schematic-only-report-template.md` 与三张 `*-template.tsv` 都在。
 先 `git pull` 再动手，别硬跑。
 
 ```bash
@@ -452,7 +476,7 @@ A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E/F/G/H/I 是�
 23. **★ 厂商 BSP 的 pinctrl 是最硬的第三方依据（查漏判据②）** —— 原理图若是厂商自家的 EVK，**BSP 里 `AM62X_IOPAD(..., N)` 的第 3 个参数就是这块板的标准答案**，比读图快得多也准得多。本次一条命令查出 31 处 muxmode≠0，其中 **14 处是判据①（`--audit`）根本看不见的**。
     **但绝不能只 grep "第三个参数 ≠ 0"** —— 实测 38 处里 20 处是噪声：从芯片厂 SK 板抄来且**从没被引用**的引脚组（某板 33 个组里 4 个是孤儿）、**装了才生效的叠加层 `.dtso`**、**同一批脚的多套互斥配置**、引用它的节点 **`status="disabled"`**、**MCU 域用另一个宏** `AM62X_MCU_IOPAD`（只匹配主域会整片漏）、以及**两只脚被两个都 enabled 的节点配成不同功能**（那是 dts 真冲突，要写成待确认）。
     **对策**：写成 `dts_pinmux_audit.py`，按"被引用 + 节点 enabled + 按文件分叠加层"分组输出，并与交付物对拍。
-    **★ 还要先确认「这份 dts 确实是这块板的」**：同一厂商往往并存几代板级文件，名字只差几个字符，结论却不同。实测同一份原理图：拿 `myd-am62x-*`（内核 6.12）作依据② → **[A] 31 处**；拿 `myd-y62x-*`（另一代）→ **[A] 22 处**。差的正是 `VOUT0_DATA16–23`（前者有、后者无）与 `MCU_SPI0_D0→MCU_GPIO0_3`（后者有、前者无）—— **两代都不完整**，谁也不是标准答案。
+    **★ 还要先确认「这份 dts 确实是这块板的」**：同一厂商往往并存几代板级文件，名字只差几个字符，结论却不同。实测同一份原理图：拿上一代板级 dts（内核 6.12）作依据② → **[A] 31 处**；拿下一代板级 dts → **[A] 22 处**。差的正是 `VOUT0_DATA16–23`（前者有、后者无）与 `MCU_SPI0_D0→MCU_GPIO0_3`（后者有、前者无）—— **两代都不完整**，谁也不是标准答案。
     所以：dts 的对拍结果要**与原理图交叉印证**，不能当唯一权威；有多个候选时，优先与**本次要改的那个内核仓库**里的那份核对（那才是交付后真正生效的基线）。
 24. **交付物形态：在文档里写清楚 ≠ agent 会照做** —— 契约（5 个 sheet / 列名 / md 章节）写进 markdown 之后，换个会话照样漂：实测另一份产物是 **3 个 sheet**、已用表 **11 列**，多出来的全是契约明令禁止的工具字段（`判据A命中页`/`置信度`/`负载器件(弱判据)`），md 也写成了"方法学 + 自检报告"。而且那份产物**通篇没提过契约/模板**，说明它多半是拿着**旧副本**在跑。
     **对策**：① 把形态做成**可复制的骨架文件**（`assets/pinmap-template.xlsx`），让人和 agent 直接照着它比，而不是读一段描述去"理解"；② 加一条前置自检 **"`assets/` 或骨架文件不在 = 你手上是旧副本，先同步"**，把"没读到"从静默变成响亮的失败。

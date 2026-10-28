@@ -1,0 +1,4 @@
+id	分组	状态	控制源	源类型	方向	控制器件	器件型号	器件引脚	开关/通道	目标	目标类型	关系	有效状态/条件	动作与结果	I2C地址	中断	原理图页	确认状态	备注
+C01	示例组	ON	CTRL_A	GPIO	SOC_OUT	U1	PART1	G(1)	Q1	RAIL_A	电源轨	控制	高有效	CTRL_A=1 时 RAIL_0→RAIL_A	—	—	1	已看图	上拉/下拉、0R/DNP 写这里
+C02	示例组	OFF	CTRL_A	GPIO	SOC_OUT	U1	PART1	G(1)	Q1	RAIL_A	电源轨	控制	低有效	CTRL_A=0 时断开	—	—	1	已看图	同一信号的不同状态分行写，便于生成真值表
+C03	示例总线	—	BUS_SCL/SDA	I2C	BIDIR	U2	PART2	SCL(6)/SDA(7)	—	U2 寄存器	器件	数据	—	读写配置/状态	0x22	—	1	已看图	地址图上没写就写「待确认 Qn」

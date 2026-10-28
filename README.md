@@ -7,7 +7,7 @@
 
 | 技能                                                                                                       | 分类         | 平台         | 说明                                                |
 | ---------------------------------------------------------------------------------------------------------- | ------------ | ------------ | --------------------------------------------------- |
-| [`schematic-analysis-and-pin-multiplexing`](Linux/Driver/common/schematic-analysis-and-pin-multiplexing/) | Linux/Driver | common       | 原理图 PDF + 引脚表 → 硬件资源分析／引脚映射表（含 Windows 路线、交付物模板、dts 审计与一致性校验） |
+| [`schematic-analysis-and-pin-multiplexing`](Linux/Driver/common/schematic-analysis-and-pin-multiplexing/) | Linux/Driver | common       | 模式 A：原理图 PDF + 引脚表 → 硬件资源分析／引脚映射表；模式 B：只有原理图 → 原理图分析／功能块框图（分区/端口/正交连线/图例）+ 电源树（含 Windows 路线、交付物模板与一致性校验） |
 | [`c7z020-driver-dev`](Linux/Driver/kehu/c7z010_20/tebiandiangong/c7z020-driver-dev/)                      | Linux/Driver | c7z010_20    | MYD-C7Z020 PetaLinux 内核驱动开发 |
 | [`qt-eglfs-mirror`](Linux/System/am625X/sdk11/qt-eglfs-mirror/)                                           | Linux/System | am625X/sdk11 | AM62x Qt eglfs 双屏同显                             |
 | [`mem-stress`](Linux/System/common/mem-stress/)                                                           | Linux/System | common       | 内存／CPU 压测 + 温度监控                           |

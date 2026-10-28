@@ -1,0 +1,4 @@
+id	row	from	from_port	to	to_port	类型	标签	颜色	折点	页码
+D01	D01	SOC	IF	DEV	IF	bus	信号组 → pN			1
+D02	D02	SOC	CTRL	DEV	CTRL	control	GPIO → pN			1
+D03	D03	PWR	OUT	DEV	PWR	power	VDD_IO			1

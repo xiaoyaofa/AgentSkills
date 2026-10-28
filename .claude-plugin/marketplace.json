@@ -10,7 +10,7 @@
       "name": "schematic-analysis-and-pin-multiplexing",
       "source": "./Linux/Driver/common/schematic-analysis-and-pin-multiplexing",
       "category": "Linux/Driver",
-      "tags": ["schematic", "pin-multiplexing", "pinctrl", "device-tree", "xlsx", "pdf", "am62x"]
+      "tags": ["schematic", "schematic-only", "pin-multiplexing", "pinctrl", "device-tree", "control-map", "power-tree", "block-diagram", "svg", "xlsx", "pdf", "am62x"]
     },
     {
       "name": "c7z020-driver-dev",

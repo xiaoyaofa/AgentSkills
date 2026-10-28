@@ -1,0 +1,5 @@
+id	row	from	from_port	to	to_port	类型	标签	颜色	折点	页码
+E01	P01	J1	VBUS	F1	IN	power	VBUS	#C62828		1
+E02	P01	F1	OUT	U1	IN	power	VBUS_C	#EF6C00		1
+E03	C01	U1	OUT	Q1	G	control	控制	#455A64		2
+E04	C02	Q1	OUT	U2	IN	status	状态	#546E7A	—	2
