@@ -166,17 +166,15 @@ python3 $BIN/control_map_svg.py --style block \
 **PNG 预览**（可选，推荐放同目录方便人直接看）：
 
 ```bash
-mkdir -p <板名>-过程记录/render
-soffice --headless --convert-to pdf --outdir <板名>-过程记录/render \
-        <板名>-控制关系图.svg
-pdftoppm -r 120 -png -singlefile \
-        <板名>-过程记录/render/<板名>-控制关系图.pdf \
-        <板名>-控制关系图
-# 产物：<板名>-控制关系图.png（预览用，不属于交付物）
+python3 scripts/svg_to_png.py <板名>-控制关系图.svg --dpi 120
+# 引擎顺序：Edge/Chrome（headless 截图）→ Inkscape → LibreOffice → cairosvg
+# Windows 一般自带 Edge，无需 poppler/LibreOffice；输出像素以脚本打印为准
 ```
 
 > SVG 不能直接当图片看；用上面的方式转 PNG 后用 Read 目检。**每一轮改完布局都要重新转一次**
 > —— 线是否穿块、文字是否被裁、核心芯片是否对齐，只有看 PNG 才发现。
+> LibreOffice 兜底时导出尺寸可能由它自己决定（常见 2048 宽），脚本会打印实际像素；
+> 要严格 120dpi 优先用浏览器/Inkscape。
 
 ### B6.2 保底：`--style table` 行式关系表
 
@@ -256,7 +254,7 @@ IEEE 315（图形符号）、MIL-DTL-24784D（信号左→右、上→下；主�
   `<板名>-过程记录/detail/<接口>-{layout,zones,edges}.tsv`；数据用独立的
   `<接口>-{control-map,power-tree,devices}.tsv`，避免 manifest 与系统图混在一起；
 - 详图**不参与**主交付物的 `[S1]~[S8]`，但生成器自带的块越界/重叠/端口/文字检查
-  仍会执行；出图后同样转 PNG 目检；
+  仍会执行；出图后同样用 `svg_to_png.py` 转 PNG 目检；
 - md 的「系统框图」章节加一张**接口详图索引**，链接到各 SVG。
 
 模板：`assets/block-detail-{zones,layout,edges}-template.tsv`。生成命令与 B6.1 相同，

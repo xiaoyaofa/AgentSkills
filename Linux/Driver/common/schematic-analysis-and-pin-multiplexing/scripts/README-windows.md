@@ -11,7 +11,7 @@
 | PDF 双层提取 | `pdf_schematic_extract.sh`（poppler） | **`pdf_extract.py`**（pypdfium2） |
 | xlsx 导出 | `table_to_xlsx.py`（FODS + LibreOffice） | **`table_to_xlsx_openpyxl.py`**（openpyxl） |
 | 其余脚本 | `xlsx_dump.py`、`pin_usage.py`、`pin_mux_table.py`、`dts_pinmux_audit.py`、`verify_pinmap.py`、`check_deliverable_consistency.py`、`img_crop.py` | 同一份，跨平台通用（纯标准库） |
-| 模式 B（仅原理图） | `sch_page_split.py`、`control_map_svg.py`、`check_schematic_report.py` | 同一份，纯标准库；PDF 提取仍走 `pdf_extract.py` |
+| 模式 B（仅原理图） | `sch_page_split.py`、`control_map_svg.py`、`check_schematic_report.py`、`svg_to_png.py` | 同一份，纯标准库；PDF 提取走 `pdf_extract.py`；PNG 优先用本机 Edge/Chrome |
 
 **两条 PDF 路线不等价，别当成同一个东西**：
 
@@ -115,6 +115,10 @@ python %BIN%\check_schematic_report.py ^
        --layout %OUT%\板名-过程记录\layout.tsv ^
        --zones %OUT%\板名-过程记录\zones.tsv ^
        --edges %OUT%\板名-过程记录\edges.tsv
+
+:: ⑥ PNG 预览（优先 Edge/Chrome；Windows 一般自带 Edge，无需 poppler/LibreOffice）
+python %BIN%\svg_to_png.py %OUT%\板名-控制关系图.svg --dpi 120
+:: 引擎顺序：浏览器 → Inkscape → LibreOffice → cairosvg；脚本会打印实际像素
 ```
 
 > 模式 B 的 md 模板是 `assets\schematic-only-report-template.md`，契约是

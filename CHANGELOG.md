@@ -30,6 +30,9 @@
   `CFG_LDO[1:0]` 与 `RXD[3:1]` 各一张表，不合并
 - 接口详图的多通道/多颗器件按通道拆块（CAN1/CAN2、RS485-1/2、LVDS0/LVDS1），
   不再用 `U20/U22 ... ×2` 合并；每通道电源也画成独立块（`VDD_3V3` / `ISO_5V`）
+- `scripts/svg_to_png.py`：SVG→PNG 预览，优先本机 Edge/Chrome（headless 截图），
+  再 Inkscape/LibreOffice/cairosvg；Windows 一般自带 Edge，无需 poppler/LibreOffice；
+  PNG 只是预览，不属于交付物，`[S1]~[S8]` 不依赖它
 - `assets/block-{zones,layout,edges}-template.tsv` 与
   `assets/block-detail-{zones,layout,edges}-template.tsv`
 
@@ -52,6 +55,8 @@
 - `[S4]` 新增“块外文字压住功能块”检查；`[S8]` 新增块越界、端口偏移越界、
   rail 块过大、端口间距 <20px（箭头太短）检查
 - 布局模板改为 auto rail/soc + `50%` 端口，并修正示例块越界
+- 边标签背景宽度改为整数像素，消除 Windows/Linux 在 `.65` 处的 0.1px 舍入差异，
+  `control_map_svg.py --check` 在 Windows 实测字节一致
 - 交付物契约、md 模板、Windows 流程、SKILL.md 工具表同步
 
 ## [1.2.0] - 2026-10-22

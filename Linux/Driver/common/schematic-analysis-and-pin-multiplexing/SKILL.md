@@ -11,7 +11,7 @@ metadata:
 ---
 # 原理图分析与引脚复用（Schematic Analysis and Pin Multiplexing）
 
-- **脚本**: 见 [`scripts/`](scripts/) —— 14 个，核心逻辑只用 Python 标准库；只有裁图、PDF 渲染、xlsx 导出用到第三方包（见下）
+- **脚本**: 见 [`scripts/`](scripts/) —— 15 个，核心逻辑只用 Python 标准库；只有裁图、PDF 渲染、xlsx 导出、SVG→PNG 浏览器渲染用到第三方包/本机程序（见下）
 - **依赖**: 两条路线按平台二选一（详见「平台 → 用哪个入口」）
   - Linux/macOS：`poppler-utils`(pdftotext/pdftoppm/pdfinfo)、`Pillow`(裁图)、`LibreOffice`(出 xlsx)
   - Windows/无系统包：`pip install pypdfium2 pillow openpyxl`
@@ -57,6 +57,7 @@ metadata:
 | `scripts/sch_page_split.py`                                                                   | **模式 B**：按**物理页**切文字层（页脚无页码也能用），产 `pg-NN.txt` + `page_index.tsv`             |
 | `scripts/control_map_svg.py`                                                                  | **模式 B**：TSV → SVG + md 三张表；`--style block` 用 layout/zones/edges 画功能块框图（推荐），同一生成器可出 SoC↔器件的接口详图；`--check` 可复验字节一致 |
 | `scripts/check_schematic_report.py`                                                           | **模式 B**：交付物校验 `[S1]~[S8]`（S8 = 框图布局/连线完整性）；`--selftest` 用已知有错的样本回归          |
+| `scripts/svg_to_png.py`                                                                        | **模式 B 预览**：SVG→PNG，优先本机 Edge/Chrome，再 Inkscape/LibreOffice，最后 cairosvg；Windows 一般自带 Edge，无需 poppler/LibreOffice |
 | `assets/output-contract.md` / `assets/report-template.md` / `assets/pinmap-template.xlsx` | **产物形态契约 + md 骨架模板 + xlsx 骨架** —— 产出前先看，见「交付物格式契约」                         |
 
 ### 平台 → 用哪个入口（★ 两条路不等价，按平台挑一个，别混用）

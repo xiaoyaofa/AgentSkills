@@ -1196,7 +1196,8 @@ def arrowhead(p_prev, p_end, color, size=9.0):
 
 def edge_label_geometry(label):
     lines = wrap(label, EDGE_LABEL_WRAP, EDGE_LABEL_FS)
-    w = max(units(l) for l in lines) * EDGE_LABEL_FS + 8
+    # 整数像素宽，避免 Linux/Windows 在 .65 处 round-half-even 差 0.1px
+    w = int(max(units(l) for l in lines) * EDGE_LABEL_FS + 8.5)
     h = len(lines) * 13 + 3
     return lines, w, h
 

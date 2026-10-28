@@ -165,6 +165,10 @@ MIL-DTL-24784D 的惯例：
 LVDS J5/J6 与 J7/J8）按通道拆成 CAN1/CAN2、RS485-1/2、LVDS0/LVDS1 多个块，
 不要用 `U20/U22 ×2` 合并；每通道电源也画成独立块（`VDD_3V3` / `ISO_5V`），
 与其它接口一致，不要只写在端口名里。
+
+**PNG 预览**不属于交付物；需要时用 `scripts/svg_to_png.py`（优先 Edge/Chrome，
+其次 Inkscape/LibreOffice/cairosvg）。Windows 一般自带 Edge，无需 poppler/LibreOffice。
+SVG 才是交付物，`[S1]~[S8]` 不依赖 PNG。
 详图的画法见 `references/schematic-only.md` B6.4。
 
 **输入文件**（都在过程记录目录）：
