@@ -1,12 +1,12 @@
 ---
 name: schematic-analysis-and-pin-multiplexing
-description: 两种用法。模式A：原理图 PDF + 厂商引脚表 → 《硬件资源分析.md》+《引脚映射表.xlsx》，含用/未用判定、ball/GPIO/muxmode 反查与查漏、交付物格式契约与校验。模式B：只有原理图 → 《原理图分析.md》+《控制关系图.svg》，用功能块框图（核心芯片统一突出、分区容器、端口、正交连线、网络标签、图例、标题栏）画清控制源、器件、开关、目标及电源树，TSV 驱动生成、可机器校验。支持 Linux poppler 与 Windows pypdfium2 两条提取路线，拓扑判读需要多模态视觉。
+description: 默认执行原理图分析：原理图 PDF →《原理图分析.md》+《控制关系图.svg》，用功能块框图（核心芯片突出、分区容器、端口、正交连线、网络标签、图例、标题栏）画清控制源、器件、开关、目标与电源树，S1~S8 机器校验；若同时提供厂商核心板引脚表，先询问用户是否追加详细引脚复用分析，确认后产出《硬件资源分析.md》+《引脚映射表.xlsx》，含用/未用判定、ball/GPIO/muxmode 反查与查漏，A~I 与格式契约 [5] 校验。两套交付物、契约、检查器各自独立、内容不混写；PDF 只提取一次。支持 Linux poppler 与 Windows pypdfium2 两条提取路线，拓扑判读需要多模态视觉。
 license: MIT
 metadata:
   category: Linux/Driver
   platform: common
-  soc: 任意（模式 A 首次验证 AM62x）
-  board: 模式 A = MYC-YM62X；模式 B = 2 页 Altium 充电器板
+  soc: 任意（B 默认；A 可选，首次验证 AM62x）
+  board: B = 2 页 Altium 充电器板；A = MYC-YM62X（提供引脚表且确认后）
   vendor: MYIR
 ---
 # 原理图分析与引脚复用（Schematic Analysis and Pin Multiplexing）
@@ -15,8 +15,8 @@ metadata:
 - **依赖**: 两条路线按平台二选一（详见「平台 → 用哪个入口」）
   - Linux/macOS：`poppler-utils`(pdftotext/pdftoppm/pdfinfo)、`Pillow`(裁图)、`LibreOffice`(出 xlsx)
   - Windows/无系统包：`pip install pypdfium2 pillow openpyxl`
-- **适用**: 任意 SoC/厂商。模式 A 需要"① 底板原理图 PDF ② 厂商核心板引脚复用表(xlsx/表格)"；模式 B 只需要①
-- **首次验证平台**: 模式 A = MYIR MYC-YM62X（AM62x，ALW/BGA425）；模式 B = 2 页 Altium 充电器板（Type-C PD + 电池 + 电源路径开关）
+- **适用**: 任意 SoC/厂商。原理图 PDF 必填；厂商核心板引脚复用表可选。默认先做原理图分析；若提供引脚表，再**询问用户是否追加**引脚复用分析，不自动替用户决定
+- **首次验证平台**: B = 2 页 Altium 充电器板（Type-C PD + 电池 + 电源路径开关）；A = MYIR MYC-YM62X（AM62x，ALW/BGA425，提供引脚表且用户确认后）
 
 ## 用途
 
@@ -26,20 +26,35 @@ metadata:
 2. **核心板的每只脚，底板到底接没接？接去了哪？**（决定要不要裁剪现有设备树）
 3. **每只被用到的脚，SoC 上原本是什么功能、底板要把它复用成什么功能（mux mode 是几）？**（决定 pinctrl 怎么写）
 
-模式 A 把这三件事做成可复现的流程，产出两份交付物：**《硬件资源分析.md》**（叙述）+ **《引脚映射表.xlsx》**（表格）。
+原理图分析（B）回答 1 及外设/控制/电源拓扑；引脚复用（A）在用户确认后补充 2/3 的逐脚用/未用与 muxmode。
+B 产出 **《原理图分析.md》** + **《控制关系图.svg》**；A 产出 **《硬件资源分析.md》** + **《引脚映射表.xlsx》**。
 
-## 先分流：模式 A（引脚复用） vs 模式 B（仅原理图）
+## 输入检查与确认（一次调用）
 
-| 你手上的输入 / 用户的要求 | 走哪条 |
+| 输入 | 行为 |
 |---|---|
-| 原理图 PDF **+ 厂商核心板引脚表 xlsx**；要判断哪些核心板脚被用了、muxmode 是几 | **模式 A：引脚复用分析** —— 本文以下全部内容 |
-| **只有原理图 PDF**；或明确说「不做引脚复用 / 只分析原理图 / 给软件看控制关系」 | **模式 B：仅原理图分析** —— 见 [`references/schematic-only.md`](references/schematic-only.md) |
+| 无原理图 PDF、无引脚表 | 告知原理图分析需要 PDF；询问是否有 PDF（引脚表可选）；**不生成任何文件** |
+| 有引脚表、无 PDF | 说明原理图分析和引脚复用都需要 PDF；询问 PDF；**不生成** |
+| 只有 PDF | **开始前**先问「是否有引脚表 / 是否要追加 A」；没有表就告知 A 不可用；确认后再执行 **B** |
+| PDF + 引脚表，未明确要 A | **开始前**询问「是否追加详细引脚复用分析（A，产出 xlsx + md）？」；确认或拒绝后再执行；不要先跑 B 再问 |
+| PDF + 引脚表 + 用户明确要 A | 视为已确认；同次执行 **B + A** |
+| PDF + 引脚表 + 用户明确只做 B | 只执行 B；明确记录「按用户要求跳过 A，引脚表未使用」 |
 
-模式 A 产出《硬件资源分析.md》+《引脚映射表.xlsx》；模式 B 产出《原理图分析.md》+《控制关系图.svg》。
-两套流程的脚本、交付物契约、检查项互相独立：模式 A 的 `[A]~[I]` 不适用于模式 B，
-模式 B 的 `[S1]~[S8]` 也不适用于模式 A。**别把两条路的产物混在一起交。**
+- **所有问题先问完再跑**：PDF 是否提供、是否有引脚表、是否要 A，全部确认后才开始 Stage 1 提取；
+  不要在生成 B 之后再回头问 A。
+- **A 必须用户确认**：仅有引脚表不等于同意生成 A；没确认就只交 B，并在结论里说明未做引脚复用。
+- **PDF 只提取一次**：B 和 A 共用同一个 `sch/` 文本/整图目录，不要重复提取。
+- **两套交付物、契约、检查器各自独立，内容不混写**：B 用 `[S1]~[S8]`，A 用 `[A]~[I]` + `[5]`；同一次可两套都产。
+- B 报告的范围声明必须包含 `未使用核心板引脚表` 和 `不做引脚复用` 两个短语（`[S2]` 查），且不得出现 `muxmode`（`[S5]` 查）；同批 A 的存在不影响 B 报告自己的范围声明。
+- 如果没有 PDF，**先问用户要 PDF**，不要拿引脚表硬跑；如果用户只要引脚复用而原理图 PDF 不在，说明无法完成并停止。
+- B 阶段的读图、三张 TSV、框图/接口详图、模式表/strap 等细节见
+  [`references/schematic-only.md`](references/schematic-only.md)。
 
 ## 工具清单
+
+阶段：**共用（Stage 1，只跑一次）** = `pdf_schematic_extract.sh` / `pdf_extract.py` / `img_crop.py`；
+**B（每次必跑）** = `sch_page_split.py` / `control_map_svg.py` / `check_schematic_report.py` / `svg_to_png.py`；
+**A（有引脚表且用户确认后）** = `xlsx_dump.py` / `pin_usage.py` / `pin_mux_table.py` / `dts_pinmux_audit.py` / `table_to_xlsx*.py` / `verify_pinmap.py` / `check_deliverable_consistency.py`。
 
 | 脚本                                                                                            | 一句话                                                                                                         |
 | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -52,13 +67,14 @@ metadata:
 | `scripts/dts_pinmux_audit.py`                                                                 | **查漏依据②**：拿板级 dts 的 pinctrl 反查"哪些脚真被换了功能"，自动剔掉 SK 板残留 / 未使能节点 / 叠加层 |
 | `scripts/table_to_xlsx.py`                                                                    | 多个 TSV → 多 sheet xlsx（FODS + LibreOffice 路线）                                                           |
 | `scripts/table_to_xlsx_openpyxl.py`                                                           | 同上，**纯 pip 路线**（openpyxl 直写，免 LibreOffice）                                                   |
-| `scripts/verify_pinmap.py`                                                                    | 交付前交叉复查 `[A]~[G]`（引脚表 ↔ 原理图 ↔ 已用/未用两表）                                                |
+| `scripts/verify_pinmap.py`                                                                    | 交付前交叉复查 `[A]~[I]`（引脚表 ↔ 原理图 ↔ 已用/未用两表）                                                |
 | `scripts/check_deliverable_consistency.py`                                                    | 交付物**内部**一致性复查（位号↔型号）＋ **格式契约**校验（`[5]`）                               |
-| `scripts/sch_page_split.py`                                                                   | **模式 B**：按**物理页**切文字层（页脚无页码也能用），产 `pg-NN.txt` + `page_index.tsv`             |
-| `scripts/control_map_svg.py`                                                                  | **模式 B**：TSV → SVG + md 三张表；`--style block` 用 layout/zones/edges 画功能块框图（推荐），同一生成器可出 SoC↔器件的接口详图；`--check` 可复验字节一致 |
-| `scripts/check_schematic_report.py`                                                           | **模式 B**：交付物校验 `[S1]~[S8]`（S8 = 框图布局/连线完整性）；`--selftest` 用已知有错的样本回归          |
-| `scripts/svg_to_png.py`                                                                        | **模式 B 预览**：SVG→PNG，优先本机 Edge/Chrome，再 Inkscape/LibreOffice，最后 cairosvg；Windows 一般自带 Edge，无需 poppler/LibreOffice |
-| `assets/output-contract.md` / `assets/report-template.md` / `assets/pinmap-template.xlsx` | **产物形态契约 + md 骨架模板 + xlsx 骨架** —— 产出前先看，见「交付物格式契约」                         |
+| `scripts/sch_page_split.py`                                                                   | **B 阶段**：按**物理页**切文字层（页脚无页码也能用），产 `pg-NN.txt` + `page_index.tsv`             |
+| `scripts/control_map_svg.py`                                                                  | **B 阶段**：TSV → SVG + md 三张表；`--style block` 用 layout/zones/edges 画功能块框图（推荐），同一生成器可出 SoC↔器件的接口详图；`--check` 可复验字节一致 |
+| `scripts/check_schematic_report.py`                                                           | **B 阶段**：交付物校验 `[S1]~[S8]`（S8 = 框图布局/连线完整性）；`--selftest` 用已知有错的样本回归          |
+| `scripts/svg_to_png.py`                                                                        | **B 阶段预览**：SVG→PNG，优先本机 Edge/Chrome，再 Inkscape/LibreOffice，最后 cairosvg；Windows 一般自带 Edge，无需 poppler/LibreOffice |
+| `assets/output-contract.md` / `assets/report-template.md` / `assets/pinmap-template.xlsx` | **A 阶段**：产物形态契约 + md 骨架模板 + xlsx 骨架 —— 有引脚表且确认后才用 |
+| `assets/schematic-only-{output-contract,report-template}.md` / `assets/block-*-template.tsv` | **B 阶段**：契约 + md 模板 + 框图 TSV 模板 —— 每次必用 |
 
 ### 平台 → 用哪个入口（★ 两条路不等价，按平台挑一个，别混用）
 
@@ -97,7 +113,7 @@ pip install pypdfium2 pillow openpyxl
 | `xlsx_dump.py` / `table_to_xlsx.py`        | 纯文本                         | xlsx 本身就是 zip+XML                                                                                                                  |
 | `pin_usage.py`                               | 纯文本                         | 判据 A/B 读的都是 `pdftotext` 出来的文字层                                                                                           |
 | `pin_mux_table.py`（含 `--audit` 查漏）    | 纯文本                         | **本次最有价值的发现（`RESETOUT1` 的 Function0 其实是 `CSn2`）就是纯文本抓到的**                                             |
-| `verify_pinmap.py`                           | 纯文本                         | A–F 六项检查全部基于文字层                                                                                                            |
+| `verify_pinmap.py`                           | 纯文本                         | A–I 九项检查全部基于文字层                                                                                                            |
 | `pdf_schematic_extract.sh` + `img_crop.py` | 纯文本（但产出是给视觉用的图） | 这两个脚本本身不需要视觉，它们的**唯一用途**是喂给模型看                                                                         |
 | **拓扑判读**                             | **必须视觉**             | 谁驱动谁、总线方向、上下拉是否贴、门电路是"或门"还是"缓冲" —— 文字层按排版顺序输出，这些关系在里面是**并列出现的，看不出方向** |
 
@@ -118,11 +134,11 @@ pip install pypdfium2 pillow openpyxl
 
 原则一句话：**"看图才能定的事情，标成待人工确认，不要硬猜"。**
 
-> 模式 B（仅原理图分析）同样适用：控制极性、P/N 沟道、0R/DNP、器件归属都只能读图。
+> B 阶段（原理图分析）同样适用：控制极性、P/N 沟道、0R/DNP、器件归属都只能读图。
 > 纯文本模型可以照跑 `[S1]~[S8]` 的文本/结构检查，但所有未经读图确认的行必须写
 > `待确认 Qn`，并在 md 的「待确认问题」章节闭环 —— 检查器会查。
 
-1. 流程照跑 ①–⑤，`verify_pinmap.py` 照跑 —— 引脚/ball/muxmode 反查、用/不用统计、`--audit` 查漏**全都不受影响**；
+1. A 阶段照跑（有表且用户确认后），`verify_pinmap.py` 照跑 —— 引脚/ball/muxmode 反查、用/不用统计、`--audit` 查漏**全都不受影响**；
 2. 把所有 `confidence = 仅B` 的条目、`verify_pinmap` 的 `[E]` 项、"总线方向/门电路类型/DNP 归属"这类**只列现象、不给结论**，汇总成一张《需人工看图确认》清单交给客户/硬件工程师（一次真实项目这类条目约 8 组，人看图十来分钟能判完）；
 3. 交付文档里必须写明**哪些结论是文本层推导、哪些经过图像确认**，不要让下一手误以为全都核过。
 
@@ -134,9 +150,14 @@ pip install pypdfium2 pillow openpyxl
 
 ## 交付物格式契约（★ 动手前先看）
 
-> 本节是**模式 A** 的契约。模式 B 的契约是另一份：
-> [`assets/schematic-only-output-contract.md`](assets/schematic-only-output-contract.md)
-> （文件名 / 三张 TSV 列 / md 章节 / SVG 约束 / `[S1]~[S8]`）。两条路的产物不要混用契约。
+> 本 skill 有**两套契约，按阶段取用**：
+> - **B 阶段（每次必用）**：[`assets/schematic-only-output-contract.md`](assets/schematic-only-output-contract.md)
+>   （文件名 / 三张 TSV 列 / md 章节 / SVG 约束 / `[S1]~[S8]`）。
+> - **A 阶段（有引脚表且用户确认后）**：本节以下 + [`assets/output-contract.md`](assets/output-contract.md)
+>   （文件名 / 5 个 sheet / md 章节 / `[5]`）。
+>
+> 两套分别校验各自的交付物，**同一次调用可以两套都产，但内容不混写**：B 报告不写引脚复用结论、
+> 不出现 `muxmode`；A 的 xlsx/md 不吞 B 的控制关系/电源树章节。
 
 **脚本管"算什么"，契约管"产出长什么样"。** 没有契约时，换个板子 / 换个会话，产物形态就会漂 —— 实测漂过：xlsx 从 5 个 sheet 变 6 个、**少了「器件清单」和「待确认问题」**、已用表**少了 `引脚原名 (Function0)` 与 `底板所需功能 (muxmode)` 两列**（BSP 最要用的两列），还混进了工具内部字段（`置信度`/`判据A命中页`）和 skill 自身的验证结论（"Windows 通用性验证""建议反馈到 Skill"）。
 
@@ -150,9 +171,10 @@ pip install pypdfium2 pillow openpyxl
 **★ 先做这个检查：`assets/` 目录和上面的骨架文件在不在？**
 不在 = **你手上是旧版 skill 的副本**，产物形态一定会漂（实测过一次：另一个会话拿着旧副本跑，
 产出的 xlsx 是 3 个 sheet、已用表 11 列，多出来的全是契约明令禁止进交付物的工具字段）。
-模式 B 还要确认 `assets/schematic-only-output-contract.md`、
-`assets/schematic-only-report-template.md` 与三张 `*-template.tsv` 都在。
-先 `git pull` 再动手，别硬跑。
+**B 阶段每次都要确认** `assets/schematic-only-output-contract.md`、
+`assets/schematic-only-report-template.md` 与三张 `block-*-template.tsv` 都在；
+**A 阶段（有表且确认后）再确认** `assets/output-contract.md`、`assets/report-template.md`、
+`assets/pinmap-template.xlsx`。先 `git pull` 再动手，别硬跑。
 
 ```bash
 python3 scripts/xlsx_dump.py <skill>/assets/pinmap-template.xlsx   # 读骨架，看清 5 个 sheet 与列名
@@ -166,74 +188,126 @@ python3 scripts/xlsx_dump.py <skill>/assets/pinmap-template.xlsx   # 读骨架�
 2. **5 个 sheet 的名字与列名写死**（顺序也固定）；某板"未使用 0 只"时**保留这张空表**，别删表、更别拿它当过程记录表。
 3. **过程与验证内容不进交付物**：工具内部字段（`置信度`/`判据A命中页`/audit 计数）、sha256、`--conn-page` 这类参数、以及 skill 自身的验证结论 —— 要留就另存 `<板名>-过程记录.md`。交付物是给客户看硬件分析的，不是给工具自己做体检报告的。
 
-## 标准流程
+## 标准流程（Stage 0–4）
+
+> **所有问题先问完，再生成任何文件**：
+> 没有 PDF → 先问用户要 PDF（引脚表可选），停止；
+> 只有 PDF → 先问是否有引脚表、是否要追加 A；没有表就告知 A 不可用；
+> 有引脚表但用户没明确要 A → **开始前**问是否追加 A，确认或拒绝后再跑；
+> 用户明确只做 B → 保持 `DO_A=no`，并记录“按用户要求跳过 A”。
+> **Stage 1 之前必须完成上述确认；不要先跑 B 再问 A。**
 
 ```bash
 BIN=<本skill>/scripts
+ASSETS="$BIN/../assets"
 OUT="$HOME/work/项目名"; mkdir -p "$OUT"
+BOARD=<板名>
+PDF=<原理图.pdf>
+PINXLSX=<核心板引脚表.xlsx>          # 可选；没有就留空
+DO_A=no                             # 只有用户明确要 A 或确认后才改 yes
+STEM="$(basename "${PDF%.pdf}")"
+PROC="$OUT/$BOARD-过程记录"
 
-# ① 引脚表 -> TSV（先体检，确认表头在第几行）
-python3 $BIN/xlsx_dump.py 核心板引脚表.xlsx --check
-python3 $BIN/xlsx_dump.py 核心板引脚表.xlsx --sheet 1 --skip-rows 1 > $OUT/pinlist.tsv
+# ---------- Stage 0 输入检查 / 确认 / 资产预检 ----------
+if [ ! -f "$PDF" ]; then
+  echo "缺少原理图 PDF：先询问用户要 PDF；引脚表可选。不要生成任何文件。"
+  exit 1
+fi
+test -f "$ASSETS/schematic-only-output-contract.md" && \
+test -f "$ASSETS/schematic-only-report-template.md" && \
+test -f "$ASSETS/block-zones-template.tsv" && \
+test -f "$ASSETS/block-layout-template.tsv" && \
+test -f "$ASSETS/block-edges-template.tsv" && \
+test -f "$ASSETS/control-map-template.tsv" && \
+test -f "$ASSETS/power-tree-template.tsv" && \
+test -f "$ASSETS/devices-template.tsv" || { echo "旧版 skill：缺 B 阶段 assets，先同步"; exit 1; }
 
-# ② 原理图 -> 文字层 + 整图（★ 按平台二选一，别混用）
-$BIN/pdf_schematic_extract.sh 原理图.pdf $OUT/sch 160      # Linux/macOS：poppler，-layout 严格版面序
-python3 $BIN/pdf_extract.py   原理图.pdf $OUT/sch 160      # Windows/无 poppler：pypdfium2，纯 pip
-#    ★ 本次走了哪条路，要写进交付文档（pypdfium2 是「阅读序」，见「平台 → 用哪个入口」）
+if [ "$DO_A" = yes ]; then
+  test -f "$ASSETS/output-contract.md" && \
+  test -f "$ASSETS/report-template.md" && \
+  test -f "$ASSETS/pinmap-template.xlsx" || { echo "A 阶段 assets 不全"; exit 1; }
+  python3 "$BIN/xlsx_dump.py" "$PINXLSX" --check   # 先看清表头在第几行
+fi
 
-# ③ 通读：先看框图页，再逐页看功能页（用 Read 读 $OUT/sch/pages/pg-NN.png）
-#    看不清的区块 -> 300dpi 重渲染该页后局部裁图
-#    ★ 模型没有视觉能力时，跳过本步的"判读"，改为记录待人工确认项（见「模型能力要求」）
-pdftoppm -r 300 -f 8 -l 8 -png 原理图.pdf $OUT/sch/hi8                        # Linux：单页 300dpi
-python3 $BIN/pdf_extract.py 原理图.pdf $OUT/sch/hi300 300 --render-only 8      # Windows：同上
-python3 $BIN/img_crop.py $OUT/sch/hi8-08.png $OUT/sch/crop.png 950 1150 2600 2481 1.1
-#    ★ 对照文字层确认网络名拼写：grep -n "SoC_XXX" $OUT/sch/text/原理图.compact.txt
+# ---------- Stage 1 共用提取（只做一次，B/A 共用） ----------
+mkdir -p "$OUT/sch"
+"$BIN/pdf_schematic_extract.sh" "$PDF" "$OUT/sch" 160       # Linux/macOS：poppler
+# python3 "$BIN/pdf_extract.py" "$PDF" "$OUT/sch" 160       # Windows/无 poppler：pypdfium2
+SCH="$OUT/sch/text/$STEM.compact.txt"
+# ★ 提取路线（poppler / pypdfium2）要写进 B 和 A 两份 md 的头部
 
-# ④ 判定"底板用了哪些信号"
-python3 $BIN/pin_usage.py --pinlist $OUT/pinlist.tsv --sch $OUT/sch/text/*.compact.txt \
-        --out $OUT/usage.tsv
-#    confidence 列 != "A+B 一致" 的，逐条裁图复核
+# ---------- Stage 2 B 阶段（每次必跑） ----------
+mkdir -p "$PROC/pages"
+python3 "$BIN/sch_page_split.py" "$OUT/sch/text/$STEM.txt" \
+        --out "$PROC/pages" --pdf-info "$OUT/sch/info.txt"
+# 用 Read 读 $OUT/sch/pages/pg-NN.png；小字对 300dpi 裁图核对
+# 人/模型：读图填 devices/control-map/power-tree/layout/zones/edges；
+# 无法确认的写「待确认 Qn」，不要硬猜
+cp "$ASSETS/devices-template.tsv"      "$PROC/devices.tsv"
+cp "$ASSETS/control-map-template.tsv"  "$PROC/control-map.tsv"
+cp "$ASSETS/power-tree-template.tsv"   "$PROC/power-tree.tsv"
+cp "$ASSETS/block-zones-template.tsv"  "$PROC/zones.tsv"
+cp "$ASSETS/block-layout-template.tsv" "$PROC/layout.tsv"
+cp "$ASSETS/block-edges-template.tsv"  "$PROC/edges.tsv"
+cp "$ASSETS/schematic-only-report-template.md" "$OUT/$BOARD-原理图分析.md"
+python3 "$BIN/control_map_svg.py" --style block \
+  --map "$PROC/control-map.tsv" --power "$PROC/power-tree.tsv" --devices "$PROC/devices.tsv" \
+  --layout "$PROC/layout.tsv" --zones "$PROC/zones.tsv" --edges "$PROC/edges.tsv" \
+  --svg "$OUT/$BOARD-控制关系图.svg" --md "$OUT/$BOARD-原理图分析.md" \
+  --title "$BOARD 系统框图" --date <YYYY-MM-DD> --source "$PDF"
+python3 "$BIN/check_schematic_report.py" \
+  --md "$OUT/$BOARD-原理图分析.md" --svg "$OUT/$BOARD-控制关系图.svg" \
+  --map "$PROC/control-map.tsv" --power "$PROC/power-tree.tsv" --devices "$PROC/devices.tsv" \
+  --layout "$PROC/layout.tsv" --zones "$PROC/zones.tsv" --edges "$PROC/edges.tsv"
+# [S1]~[S8] 必须全 0
+# 所有 A 的确认已在 Stage 0 完成；这里不再询问
+# 没有 PINXLSX：Stage 0 已告知「未提供核心板引脚表，引脚复用功能不可用」
 
-# ⑤ 反查 muxmode —— ★ 查漏三源，任一条单独用都会漏（见「查漏法」一节）
-python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv --audit      # 依据① 候选
-python3 $BIN/dts_pinmux_audit.py --dts-dir <内核>/arch/arm64/boot/dts/<厂商> \
-        --pinlist $OUT/pinlist.tsv --used $OUT/sheet1.tsv             # 依据② 对拍（本板是厂商 EVK 时=标准答案）
-#   依据③ 读图裁决，逐条写进 targets.txt（每行 "引脚号 目标功能名"）：
-python3 $BIN/pin_mux_table.py --pinlist $OUT/pinlist.tsv \
-        --targets $OUT/targets.txt --out $OUT/mux.tsv
-#   ★ 输出里出现「未判定（需裁决）」= 还没查完，逐条补进 targets.txt 再跑一遍。
-#     它**绝不会**默认成"无需复用" —— 那个默认值曾经把 17 只真复用脚写成了"无需复用"。
+# ---------- Stage 3 A 阶段（仅当 DO_A=yes 且 PINXLSX 非空） ----------
+if [ "$DO_A" = yes ]; then
+  if [ -z "$PINXLSX" ] || [ ! -f "$PINXLSX" ]; then
+    echo "DO_A=yes 但没有引脚表：不能做 A，回到 Stage 0 询问用户"; exit 1
+  fi
+  test -f "$ASSETS/output-contract.md" && \
+  test -f "$ASSETS/report-template.md" && \
+  test -f "$ASSETS/pinmap-template.xlsx" || { echo "A 阶段 assets 不全"; exit 1; }
+  APROC="$PROC/A-引脚复用"; mkdir -p "$APROC"
+  python3 "$BIN/xlsx_dump.py" "$PINXLSX" --check
+  python3 "$BIN/xlsx_dump.py" "$PINXLSX" --sheet 1 --skip-rows 1 > "$APROC/pinlist.tsv"
+  python3 "$BIN/pin_usage.py" --pinlist "$APROC/pinlist.tsv" \
+          --sch "$SCH" --out "$APROC/usage.tsv"
+  # confidence != A+B 一致的逐条裁图复核；人/模型建 sheet1.tsv / sheet2.tsv
+  python3 "$BIN/pin_mux_table.py" --pinlist "$APROC/pinlist.tsv" --audit
+  # 可选（上下文里有板级 dts 时才跑）：
+  # python3 "$BIN/dts_pinmux_audit.py" --dts-dir <内核>/arch/arm64/boot/dts/<厂商> \
+  #         --pinlist "$APROC/pinlist.tsv" --used "$APROC/sheet1.tsv"
+  # 人/模型：读图裁决，逐条写 targets.txt；确保没有「未判定（需裁决）」
+  python3 "$BIN/pin_mux_table.py" --pinlist "$APROC/pinlist.tsv" \
+          --targets "$APROC/targets.txt" --out "$APROC/mux.tsv"
+  # 人/模型：mux 回填 sheet1 第 6 列；建 devices/questions/notes
+  python3 "$BIN/xlsx_dump.py" "$ASSETS/pinmap-template.xlsx"
+  python3 "$BIN/table_to_xlsx.py" "$OUT/$BOARD-引脚映射表.xlsx" \
+    --sheet "0-说明:$APROC/notes.tsv:2.6,11" \
+    --sheet "1-底板已用信号:$APROC/sheet1.tsv:2,3.2,2.2,1.6,2.8,4.2,1.2,1.6,6,6" \
+    --sheet "2-未使用信号:$APROC/sheet2.tsv:2.2,4,1.6,2.8,2,1.2,7" \
+    --sheet "3-器件清单:$APROC/devices.tsv:2.6,4,2,1.4,7" \
+    --sheet "4-待确认问题:$APROC/questions.tsv:1,7,7,4"
+  # Windows/无 LibreOffice：把命令名换成 table_to_xlsx_openpyxl.py，参数一字不改
+  # md：照 assets/report-template.md 写 → "$OUT/$BOARD-硬件资源分析.md"；xlsx ↔ md 同步
+  python3 "$BIN/verify_pinmap.py" --pinlist "$APROC/pinlist.tsv" --sch "$SCH" \
+          --used "$APROC/sheet1.tsv" --unused "$APROC/sheet2.tsv" \
+          --conn-page <连接器页页码>
+  # [A]~[D] 全 0；[E]/[F]/[G]/[H]/[I] 逐条给结论
+  python3 "$BIN/check_deliverable_consistency.py" \
+          --xlsx "$OUT/$BOARD-引脚映射表.xlsx" --md "$OUT/$BOARD-硬件资源分析.md"
+  # [1]/[4]/[5] 不符即退出 1
+fi
 
-# ⑥ 出交付物（★ 文件名带板名）
-#   Step 0：先把骨架读出来对齐形态，再照它导出 —— 别凭记忆自创 sheet 名/列名
-python3 $BIN/xlsx_dump.py <skill>/assets/pinmap-template.xlsx
-#   Linux / 有 LibreOffice：
-python3 $BIN/table_to_xlsx.py $OUT/<板名>-引脚映射表.xlsx \
-        --sheet "0-说明:$OUT/notes.tsv:2.6,11" \
-        --sheet "1-底板已用信号:$OUT/sheet1.tsv:2,3.2,2.2,1.6,2.8,4.2,1.2,1.6,6,6" \
-        --sheet "2-未使用信号:$OUT/sheet2.tsv:2.2,4,1.6,2.8,2,1.2,7" \
-        --sheet "3-器件清单:$OUT/devices.tsv:2.6,4,2,1.4,7" \
-        --sheet "4-待确认问题:$OUT/questions.tsv:1,7,7,4"
-#   Windows / 无 LibreOffice：把命令名换成 table_to_xlsx_openpyxl.py，其余参数一字不改
-#   md：照 assets/report-template.md 的骨架写，存成 $OUT/<板名>-硬件资源分析.md
-#   中间产物 .fods 转换成功会自动删掉（免得在交付目录留 200KB 中间件）；要保留加 --keep-fods
-
-# ★ ⑥.5【同步】xlsx 改完确认没问题后，**必须把同一改动同步进 md 的对应章节** ——
-#   两份是配套交付的：表格里增/删/改了器件，md 的「逐页器件清单」「外设与总线映射」
-#   「电源与复位」对应处也要跟着改；反过来 md 里先写下的结论，同样要回填进表。
-#   只改一边 = 两份打架，交付到客户手里才发现。改完再跑 ⑦⑧，⑧ 就是查这一对是否自洽。
-
-# ⑦ 交付前必跑（一）：引脚表 ↔ 原理图 ↔ 两张表
-python3 $BIN/verify_pinmap.py --pinlist $OUT/pinlist.tsv \
-        --sch $OUT/sch/text/*.compact.txt \
-        --used $OUT/sheet1.tsv --unused $OUT/sheet2.tsv \
-        --conn-page <连接器页页码>          # ★ 不给会按默认 3 判，[D] 会冒出成片的假报错
-#   已裁决为"网络名只是核心板印字、实际按 Function0 用"的脚，加 --g-ignore L5,L6,... 跳过
-#   必须 [A]~[D] 全 0 才能交付；[E]/[F]/[G] 是弱判据，逐条给结论
-
-# ⑧ 交付前必跑（二）：内部一致性（md / 已用表负载列 ↔ 器件清单）+ 格式契约（[5]）
-python3 $BIN/check_deliverable_consistency.py \
-        --xlsx $OUT/引脚映射表.xlsx --md $OUT/硬件资源分析.md
+# ---------- Stage 4 交付清单 ----------
+test -f "$OUT/$BOARD-原理图分析.md" && test -f "$OUT/$BOARD-控制关系图.svg"
+if [ "$DO_A" = yes ]; then
+  test -f "$OUT/$BOARD-硬件资源分析.md" && test -f "$OUT/$BOARD-引脚映射表.xlsx"
+fi
 ```
 
 ## 关键方法（这一节是精华）
@@ -297,7 +371,7 @@ python3 $BIN/check_deliverable_consistency.py \
 一旦跳过 ② 而不做补偿，这一类会被**整只漏掉**，而它们往往直接决定总线通不通。实测：某轮"手边没 dts 就跳过 ②"，
 结果 `UART0_RTSn/CTSn → I2C3_SDA/SCL (mux 2)` 两只被漏 —— 按那份表配 pinctrl，**I2C3 上的 RTC / USB-C CC / LVDS1 全部不通**。
 
-**自动部分（已做成机器检查）：** 跑 ⑦ 的 **[I]** —— 它查"这只脚自己的网络名，和它某个备用功能名是否出现在同一页"
+**自动部分（已做成机器检查）：** 跑 A 阶段校验的 **[I]** —— 它查"这只脚自己的网络名，和它某个备用功能名是否出现在同一页"
 （双标签 / 0R 交叉跳线就是这么画的）。抓得到的典型：`UART0_RTSn` 与 `I2C3_SDA` 同在 p23、`SPI0_CS1` 与 `EHRPWM0_B` 同在 p10。
 
 **手工部分（按引脚族逐个回查，5 分钟）：** 对下列"高频互换族"，在图上看这只脚到底接去了哪：
@@ -322,7 +396,7 @@ python3 $BIN/check_deliverable_consistency.py \
 python3 scripts/pin_mux_table.py   --pinlist pinlist.tsv --audit      # ① 候选：引出名落在哪一位
 python3 scripts/dts_pinmux_audit.py --dts-dir arch/arm64/boot/dts/<厂商> \
         --entry <板级>.dts --pinlist pinlist.tsv --used sheet1.tsv     # ② 仅在"手边就有这块板的内核"时跑
-# ③ 原理图侧自动查：跑 ⑦ 的 [H]（GPIO 蓝字）+ [I]（备用功能同页共现），不用单独准备输入
+# ③ 原理图侧自动查：跑 A 阶段校验的 [H]（GPIO 蓝字）+ [I]（备用功能同页共现），不用单独准备输入
 # ④ 读图裁决，把结论写进 targets.txt：
 python3 scripts/pin_mux_table.py   --pinlist pinlist.tsv --targets targets.txt --out mux.tsv
 ```
@@ -374,9 +448,23 @@ python3 scripts/pin_mux_table.py   --pinlist pinlist.tsv --targets targets.txt -
 
 xlsx 里务必留一个 **「0-说明」sheet**，写清每列的语义、muxmode 是怎么来的、以及本文这几条判读规则 —— 表格会流转到别人手里，语义不写下来等于没有。
 
-## 交付前必跑的两份复查
+## 交付前复查（B 必跑，A 在确认后）
 
-### 第一份：交叉复查 `[A]~[I]`（`verify_pinmap.py`）
+### B 阶段（每次必跑）：`check_schematic_report.py`
+
+```bash
+python3 $BIN/check_schematic_report.py \
+  --md "$OUT/<板名>-原理图分析.md" --svg "$OUT/<板名>-控制关系图.svg" \
+  --map "$PROC/control-map.tsv" --power "$PROC/power-tree.tsv" \
+  --devices "$PROC/devices.tsv" --layout "$PROC/layout.tsv" \
+  --zones "$PROC/zones.tsv" --edges "$PROC/edges.tsv"
+# [S1]~[S8] 必须全 0；--selftest 验证检查器自身
+```
+
+> 只要提供了 PDF，这一份就是必跑项；同批是否跑 A 不影响它。
+> B 报告的范围声明、`muxmode` 禁用词由 `[S2]`/`[S5]` 检查。
+
+### A 阶段·第一份：交叉复查 `[A]~[I]`（`verify_pinmap.py`）
 
 | 检查                                                   | 抓什么                                                                                                                                                                                                                                                                               |
 | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -393,7 +481,7 @@ xlsx 里务必留一个 **「0-说明」sheet**，写清每列的语义、muxmod
 A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E/F/G/H/I 是弱判据，必须**逐条给出结论**而不是放着不管。
 `[G]` 是这条链上最后一道网 —— 实测它抓出过 17 行"网络名写着 UART1_RXD / VOUT0_DATA16，同一行却印着 MCASP0_AFSR'无需复用'"。
 
-### 第二份复查：交付物内部一致性（`check_deliverable_consistency.py`）
+### A 阶段·第二份：交付物内部一致性（`check_deliverable_consistency.py`）
 
 **为什么还要查一遍**：交付物是 `.md`（叙述）+ `.xlsx`（表格）**两份文件**，同一个位号可能在两份里各写了一遍。**两边都是自己写的时侯，看哪一份都像对的** —— 典型事故是 md 把隔离电源的位号写成 `U6`，而同批 xlsx 器件清单写的是 `U5`；交到客户手里才发现两份打架。
 
@@ -511,6 +599,12 @@ A/B/C/D 必须为 0 才能交付（脚本用退出码体现）；E/F/G/H/I 是�
 
 | 情况                                | 怎么办                                                                                                                                                                            |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **没有 PDF / 只有引脚表**     | 先告知原理图分析需要 PDF、引脚复用也需要 PDF；询问用户要 PDF；**停止，不生成任何文件**                                                                                       |
+| **只有 PDF**                  | 开始前先问是否有引脚表/是否要 A；没有表就告知「引脚复用不可用」；确认后再跑 B                                                                                                 |
+| **PDF + 引脚表，没明确要 A**  | 开始前询问是否追加 A；确认或拒绝后再跑；拒绝则只交 B 并记录“按用户要求跳过”                                                                                                   |
+| **PDF + 引脚表 + 明确要 A**   | B + A 同次跑；两套交付物、两套 checker 分别过                                                                                                                                |
+| **PDF + 引脚表 + 明确只做 B** | 只跑 B；记录“引脚表未使用、按用户要求未做引脚复用”；不生成 A 文件                                                                                                             |
+| **内容混写**                  | 禁止：B md 不写引脚复用结论、不出现 `muxmode`；A md/xlsx 不吞 B 的控制关系/电源树章节                                                                                         |
 | **Windows / 无系统包**        | 用纯 pip 那条路：PDF 提取走 `pdf_extract.py`，xlsx 导出走 `table_to_xlsx_openpyxl.py`（见「平台 → 用哪个入口」与 [`scripts/README-windows.md`](scripts/README-windows.md)） |
 | 模型**不支持多模态** / 视觉弱 | 见上文「模型能力要求」：文本层能做的照做，**看图才能定的全部标"待人工确认"，不要硬猜**；交付文档里注明哪些结论未经图像确认                                                  |
 | 原理图是扫描件（无文字层）          | `pdftotext` 出空 → 只能走图像路线，用 Read 逐页读；或先 OCR（tesseract，中文需 chi_sim）再走流程                                                                               |

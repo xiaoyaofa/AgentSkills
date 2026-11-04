@@ -1,49 +1,59 @@
-# 模式 B：仅原理图分析（Schematic-Only）
+# B 阶段：仅原理图分析（Schematic-Only）
 
-> **什么时候走这条**：手里只有原理图 PDF；或用户明确说「不做引脚复用/不看引脚表/
-> 只分析原理图/给软件看控制关系」。**有引脚表且要判定用/未用与 muxmode 时走模式 A。**
+> **B 阶段每次调用必跑**：只要用户给了原理图 PDF，就产出
+> `<板名>-原理图分析.md` + `<板名>-控制关系图.svg`。
+> 同一次调用如果还给了厂商核心板引脚表，**开始前先询问是否追加 A**；确认后才另产
+> 《硬件资源分析.md》+《引脚映射表.xlsx》。本文件只描述 B；两套内容不混写。
 >
-> 产出：`<板名>-原理图分析.md` + `<板名>-控制关系图.svg`。
-> 不产出 xlsx，不读引脚表，不做引脚复用。
+> **所有问题先问完再跑**：没有 PDF 先问 PDF；只有 PDF 先问是否有表/是否要 A；
+> 没有引脚表就在开始前告知「未提供核心板引脚表，引脚复用功能不可用」，再跑 B。
+> 不要先跑 B 再问 A。
 >
 > 首次验证：2 页 Altium 充电器板（Type-C PD + 充电器 + 电池 + 电源路径开关）。
 > 下文所有通用规则都来自这次实测。
 
 ---
 
-## B0. 提取（Linux/macOS 与 Windows 二选一）
+## B0. 提取（共用一次，Linux/macOS 与 Windows 二选一）
 
 ```bash
 BIN=<本 skill>/scripts
-OUT=<工作目录>/sch
+WORK=<工作目录>
+SCH="$WORK/sch"
 
 # Linux/macOS：poppler，pdftotext -layout 是严格版面序
-$BIN/pdf_schematic_extract.sh <原理图.pdf> "$OUT" 160
+$BIN/pdf_schematic_extract.sh <原理图.pdf> "$SCH" 160
 
 # Windows / 无 poppler：pypdfium2，阅读序
-python3 $BIN/pdf_extract.py <原理图.pdf> "$OUT" 160
+python3 $BIN/pdf_extract.py <原理图.pdf> "$SCH" 160
 ```
 
+**B 和 A 共用这一次提取，不要重复跑。**
 **本次走哪条路线要写进 md 头部**（`check_schematic_report.py` 的 `[S2]` 会查
-`poppler` / `pypdfium2` 是否出现）。
+`poppler` / `pypdfium2` 是否出现；A 的 md 头部也要写）。
 
 > ★ 两条路的文字层行结构不同：poppler 严格版面序，PDFium 阅读序。
-> 模式 B 不依赖「页号相邻性」判据，所以两条路都能用；但弱判据（器件号邻近性）
+> B 阶段不依赖「页号相邻性」判据，所以两条路都能用；但弱判据（器件号邻近性）
 > 在 PDFium 下更差，读图核对要更仔细。
 
 ## B1. 按物理页切分（★ 不信页脚）
 
 ```bash
-python3 $BIN/sch_page_split.py "$OUT/text/<name>.txt" --out "$OUT/text"
+PAGES="$WORK/<板名>-过程记录/pages"
+python3 $BIN/sch_page_split.py "$SCH/text/<name>.txt" --out "$PAGES"
 # 或显式给页数
-python3 $BIN/sch_page_split.py "$OUT/text/<name>.txt" --out "$OUT/text" --pages 2
+python3 $BIN/sch_page_split.py "$SCH/text/<name>.txt" --out "$PAGES" --pages 2
 ```
+
+> 分页输出必须放独立目录，**不要写回 `$SCH/text`**：那里会多出 `pg-*.compact.txt`，
+> 而 A 阶段的 `pin_usage.py`/`verify_pinmap.py --sch` 只接收一个明确文件；
+> 混在一起容易把分页文件当成引脚表文字层。
 
 产出：
 
 ```
-$OUT/text/pg-01.txt / pg-01.compact.txt …
-$OUT/text/page_index.tsv      # 物理页/页脚标注/行数/单字符行占比/文字层状态
+$PAGES/pg-01.txt / pg-01.compact.txt …
+$PAGES/page_index.tsv         # 物理页/页脚标注/行数/单字符行占比/文字层状态
 ```
 
 **为什么不能按页脚切**：Altium 等 EDA 导出的 PDF 页脚可能只印 `Sheet     of`，
@@ -55,16 +65,16 @@ $OUT/text/page_index.tsv      # 物理页/页脚标注/行数/单字符行占比
 
 ## B2. 逐页读图（★ 这一步决定结论质量）
 
-1. 先用 Read 读 `$OUT/pages/pg-NN.png` 看整页功能块划分；
+1. 先用 Read 读 `$SCH/pages/pg-NN.png` 看整页功能块划分；
 2. 对每个功能块，300dpi 重渲染该页后局部裁图：
 
 ```bash
 # Linux：单页 300dpi
-pdftoppm -r 300 -f 2 -l 2 -png <原理图.pdf> "$OUT/hi2"
+pdftoppm -r 300 -f 2 -l 2 -png <原理图.pdf> "$WORK/hi2"
 # Windows：--render-only 2
-python3 $BIN/pdf_extract.py <原理图.pdf> "$OUT/hi300" 300 --render-only 2
+python3 $BIN/pdf_extract.py <原理图.pdf> "$WORK/hi300" 300 --render-only 2
 
-python3 $BIN/img_crop.py "$OUT/hi2-02.png" "$OUT/crop.png" <x1> <y1> <x2> <y2> 1.1
+python3 $BIN/img_crop.py "$WORK/hi2-02.png" "$WORK/crop.png" <x1> <y1> <x2> <y2> 1.1
 ```
 
 3. **对着裁图确认**：
@@ -281,6 +291,12 @@ TX/RX 这类交叉信号（SoC TX→器件 RX、SoC RX→器件 TX）正交布�
 第 6 节的控制表与第 7 节的电源表**不要手写**——它们由 TSV 生成。
 叙述部分写「为什么」：为什么互锁、为什么默认关断、软件先做什么后做什么。
 
+**范围声明二选一**（必须含 `[S2]` 的两个字面短语；B 报告不得出现 `muxmode`）：
+
+- 本次没有 A：`本报告未使用核心板引脚表、不做引脚复用；本次未提供引脚表。`
+- 同批确认了 A：`本报告未使用核心板引脚表、不做引脚复用；同批《硬件资源分析.md》负责引脚复用（引脚表仅用于该报告）。`
+- 有表但用户跳过 A：`本报告未使用核心板引脚表、不做引脚复用；本次提供了引脚表，但按用户要求未做引脚复用。`
+
 ## B8. 校验（交付前必跑）
 
 ```bash
@@ -310,13 +326,13 @@ python3 $BIN/check_schematic_report.py --selftest
 
 ---
 
-## 模式 B 的坑（实测）
+## B 阶段的坑（实测）
 
 1. **页脚不可信**：`Sheet     of` 没有页码值 → 按 `\f` 物理分页，`page_index.tsv` 只作辅助。
 2. **Altium 的 `NL...` 记号把 `_` 写成 `0`**：`NLOTG0PWR0CTRL` = `OTG_PWR_CTRL`，
    `NLPC60I2C40SCL` = `PC6_I2C4_SCL`。grep 时两种写法都试；以图上网络名为准。
 3. **型号不是文字层里那个**：文字层可能把 `MP2770GL-0000-Z` 读成 `MP2703`、
-   把 `Q3` 读成 `Q8`。位号↔型号必须 300dpi 读图确认（沿用模式 A 踩坑 16）。
+   把 `Q3` 读成 `Q8`。位号↔型号必须 300dpi 读图确认（沿用 A 阶段踩坑 16）。
 4. **控制极性不能猜**：P-MOS 栅极上拉默认关断、N-MOS 栅极下拉默认关断、
    NPN 集电极反相……必须看栅极/基极接法。不能确认就 `待确认 Qn`。
 5. **0R / DNP / NC 是三种不同的东西**：`@` 前缀 = DNP，`DNP_` = 不贴，`NC` = 不装。
@@ -330,5 +346,8 @@ python3 $BIN/check_schematic_report.py --selftest
    控制图只画控制/电源路径，完整网络留给 md 与原理图原图。
 10. **中文字体**：SVG 不嵌字体；无 CJK 字体的最小系统会显示方框，
     交付时说明「需要 Noto Sans CJK / 思源黑体 / 微软雅黑之一」。
-11. **模式 B 不要滑回模式 A**：不读引脚表、不写 `muxmode`、不产出 xlsx；
+11. **B 交付物不要滑回 A**：不写引脚复用结论、不出现 `muxmode`、不产出 xlsx；
+    即使同批确认了 A，引脚结论也只放在 A 的两份交付物里。
     `[S5]` 会把 `muxmode` 当禁用词抓出来。
+12. **分页输出独立目录**：`sch_page_split.py` 的输出放 `过程记录/pages/`，
+    不要写回 `sch/text/`；A 阶段的 `--sch` 只接收一个明确的 `.compact.txt`。

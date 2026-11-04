@@ -10,8 +10,8 @@
 |---|---|---|
 | PDF 双层提取 | `pdf_schematic_extract.sh`（poppler） | **`pdf_extract.py`**（pypdfium2） |
 | xlsx 导出 | `table_to_xlsx.py`（FODS + LibreOffice） | **`table_to_xlsx_openpyxl.py`**（openpyxl） |
-| 其余脚本 | `xlsx_dump.py`、`pin_usage.py`、`pin_mux_table.py`、`dts_pinmux_audit.py`、`verify_pinmap.py`、`check_deliverable_consistency.py`、`img_crop.py` | 同一份，跨平台通用（纯标准库） |
-| 模式 B（仅原理图） | `sch_page_split.py`、`control_map_svg.py`、`check_schematic_report.py`、`svg_to_png.py` | 同一份，纯标准库；PDF 提取走 `pdf_extract.py`；PNG 优先用本机 Edge/Chrome |
+| 其余脚本（A 阶段，仅确认后） | `xlsx_dump.py`、`pin_usage.py`、`pin_mux_table.py`、`dts_pinmux_audit.py`、`verify_pinmap.py`、`check_deliverable_consistency.py`、`img_crop.py` | 同一份，跨平台通用（纯标准库） |
+| B 阶段（每次必跑） | `sch_page_split.py`、`control_map_svg.py`、`check_schematic_report.py`、`svg_to_png.py` | 同一份，纯标准库；PDF 提取走 `pdf_extract.py`；PNG 优先用本机 Edge/Chrome |
 
 **两条 PDF 路线不等价，别当成同一个东西**：
 
@@ -38,7 +38,11 @@ pip install pypdfium2 pillow openpyxl
 
 不想用 pip 的话，Windows 也可以装真 poppler：`scoop install poppler` / `choco install poppler`，或用 [oschwartz10612/poppler-windows](https://github.com/oschwartz10612/poppler-windows) 的 release 解压后把 `Library\bin` 加进 `PATH`，然后照 Linux 的用法走 `.sh`（Git Bash / WSL 下）。
 
-## 三、Windows 标准流程
+## 三、A 阶段（仅当提供引脚表且用户确认）
+
+> 一次调用**开始前先问完**：是否有 PDF、是否有引脚表、是否要 A；确认后再跑。
+> A 只在「有引脚表 + 用户明确要/确认要」时追加；两个阶段共用同一次 `pdf_extract.py` 提取。
+> 没有引脚表时，开始前直接告知「引脚复用功能不可用」，再跑 B，不要进入本节。
 
 ```bash
 pip install pypdfium2 pillow openpyxl
@@ -52,9 +56,9 @@ python %BIN%\xlsx_dump.py 引脚表.xlsx --sheet 1 --skip-rows 1 > %OUT%\pinlist
 :: ② 原理图双层提取（不需要 poppler）
 python %BIN%\pdf_extract.py 原理图.pdf %OUT%\sch 160
 
-:: ③ 用/未用（★ --conn-page 必须填实际连接器页号）
+:: ③ 用/未用（★ --conn-page 必须填实际连接器页号；--sch 用明确单文件，别用通配）
 python %BIN%\pin_usage.py --pinlist %OUT%\pinlist.tsv ^
-       --sch %OUT%\sch\text\*.compact.txt --conn-page 3 --out %OUT%\usage.tsv
+       --sch %OUT%\sch\text\原理图.compact.txt --conn-page 3 --out %OUT%\usage.tsv
 
 :: ④ 反查 muxmode（纯文本，跨平台最稳的一步）
 python %BIN%\pin_mux_table.py --pinlist %OUT%\pinlist.tsv --audit
@@ -70,7 +74,7 @@ python %BIN%\table_to_xlsx_openpyxl.py %OUT%\板名-引脚映射表.xlsx ^
 ```bash
 :: 交付前必跑（一）：引脚表 ↔ 原理图 ↔ 两张表
 python %BIN%\verify_pinmap.py --pinlist %OUT%\pinlist.tsv ^
-       --sch %OUT%\sch\text\*.compact.txt --used %OUT%\sheet1.tsv --unused %OUT%\sheet2.tsv ^
+       --sch %OUT%\sch\text\原理图.compact.txt --used %OUT%\sheet1.tsv --unused %OUT%\sheet2.tsv ^
        --conn-page 24
 :: 交付前必跑（二）：交付物内部一致性（md / 已用表负载列 的位号↔型号 ↔ 器件清单）+ 格式契约
 python %BIN%\check_deliverable_consistency.py ^
@@ -80,17 +84,19 @@ python %BIN%\check_deliverable_consistency.py ^
 > **★ 导出 xlsx 前，先拿骨架对齐形态**：`python %BIN%\xlsx_dump.py <skill>\assets\pinmap-template.xlsx`
 > —— 5 个 sheet 的名字、顺序、列名以它为准。**`assets\` 目录不在 = 你手上是旧版 skill 的副本，先拉最新的。**
 
-## 三·B、模式 B（仅原理图分析）在 Windows 上
+## 三·B、B 阶段（每次必跑）在 Windows 上
 
-模式 B 的三个脚本（`sch_page_split.py` / `control_map_svg.py` / `check_schematic_report.py`）
+B 阶段的四个脚本（`sch_page_split.py` / `control_map_svg.py` / `check_schematic_report.py` / `svg_to_png.py`）
 **纯标准库**，不需要 poppler、LibreOffice 或 openpyxl；PDF 提取照样走 `pdf_extract.py`。
+有引脚表时，**开始前**先问用户是否追加 A；确认后再按 B→A 跑。没有引脚表就在开始前
+明确告知「引脚复用功能不可用」，再跑 B。不要先跑 B 再问 A。
 
 ```bat
-:: ① 提取（pypdfium2）
+:: ① 提取（pypdfium2；与 A 共用，只跑一次）
 python %BIN%\pdf_extract.py 原理图.pdf %OUT%\sch 160
 
-:: ② 按物理页切分（页脚没有页码也能用）
-python %BIN%\sch_page_split.py %OUT%\sch\text\原理图.txt --out %OUT%\sch\text
+:: ② 按物理页切分（页脚没有页码也能用；输出放独立 pages 目录）
+python %BIN%\sch_page_split.py %OUT%\sch\text\原理图.txt --out %OUT%\板名-过程记录\pages
 
 :: ③ 读图 → 照 assets\*-template.tsv 的表头建三张 TSV
 ::    devices.tsv / control-map.tsv / power-tree.tsv
@@ -121,8 +127,9 @@ python %BIN%\svg_to_png.py %OUT%\板名-控制关系图.svg --dpi 120
 :: 引擎顺序：浏览器 → Inkscape → LibreOffice → cairosvg；脚本会打印实际像素
 ```
 
-> 模式 B 的 md 模板是 `assets\schematic-only-report-template.md`，契约是
-> `assets\schematic-only-output-contract.md`；**不要拿模式 A 的模板/契约套**。
+> B 的 md 模板是 `assets\schematic-only-report-template.md`，契约是
+> `assets\schematic-only-output-contract.md`；A 的模板/契约是另一套。
+> 两套分别用于各自交付物，同一次可两套都产，但**不要混写内容**。
 > `sch_page_split.py` 直接按 `.txt` 里的换页符 `\f` 切页，不依赖页脚，
 > 所以 PDFium 路线（页脚页码取不到）也能正常分页。
 

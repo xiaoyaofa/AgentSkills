@@ -1,8 +1,8 @@
 {
   "name": "schematic-analysis-and-pin-multiplexing",
   "displayName": "原理图分析与引脚复用",
-  "version": "1.3.0",
-  "description": "两种用法。模式 A：原理图 PDF + 厂商核心板引脚表 → 《硬件资源分析.md》+《引脚映射表.xlsx》，含用/未用判定、ball/GPIO/muxmode 反查与查漏。模式 B：只有原理图 → 《原理图分析.md》+《控制关系图.svg》，用 layout/zones/edges TSV 确定性生成功能块框图（分区容器/端口/正交连线/图例/标题栏）与控制关系表，支持机器校验。支持 Windows 无 poppler 路线。",
+  "version": "1.4.0",
+  "description": "一次调用完成整套原理图分析：默认始终产出《原理图分析.md》+《控制关系图.svg》（功能块框图、控制关系、电源树，S1~S8 校验）；若同时提供厂商核心板引脚表，先询问用户是否追加详细引脚复用分析，确认后产出《硬件资源分析.md》+《引脚映射表.xlsx》（用/未用判定、ball/GPIO/muxmode 反查与查漏，A~I 与格式契约 [5] 校验）。两套交付物、契约、检查器独立，内容不混写；PDF 只提取一次。支持 Linux poppler 与 Windows pypdfium2 路线。",
   "author": {
     "name": "xiaoyaofa",
     "url": "https://github.com/xiaoyaofa"
